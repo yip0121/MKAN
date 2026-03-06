@@ -29,12 +29,12 @@ sh scripts/long_term_forecast/Weather/weather_96.sh
 
 ## Battery Dataset Placement (Custom)
 - Put battery files under `./dataset/battery/` (not under `./data_provider/`).
-- Recommended filenames:
-  - `battery_36Ah_70W_65W_1551.xlsx`
-  - `battery_30Ah_1C_1C_2800.xlsx`
+- The training loader reads CSV files (`pd.read_csv`), so convert battery Excel files to CSV before training.
+- Example converted filename:
+  - `battery_36Ah_70W_65W_1551.csv`
 - Use the following arguments for training:
   - `--root_path ./dataset/battery/`
-  - `--data_path battery_36Ah_70W_65W_1551.xlsx`
+  - `--data_path battery_36Ah_70W_65W_1551.csv`
 
 
 ## Acknowledgement
