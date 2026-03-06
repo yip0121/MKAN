@@ -27,6 +27,16 @@ sh scripts/long_term_forecast/Weather/weather_96.sh
 ```
 
 
+## Battery Dataset Placement (Custom)
+- Put battery files under `./dataset/battery/` (not under `./data_provider/`).
+- Recommended filenames:
+  - `battery_36Ah_70W_65W_1551.xlsx`
+  - `battery_30Ah_1C_1C_2800.xlsx`
+- Use the following arguments for training:
+  - `--root_path ./dataset/battery/`
+  - `--data_path battery_36Ah_70W_65W_1551.xlsx`
+
+
 ## Acknowledgement
 
 We sincerely appreciate the following github repo very much for the valuable code base and datasets:
