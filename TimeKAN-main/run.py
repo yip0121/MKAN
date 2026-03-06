@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import sys
 
 import numpy as np
 import torch
@@ -23,6 +24,15 @@ def build_parser():
     parser = argparse.ArgumentParser(description='TimeKAN')
 
     # basic config
+    parser.add_argument('--task_name', type=str, default='long_term_forecast',
+                        help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
+    parser.add_argument('--is_training', type=int, default=1, help='status')
+    parser.add_argument('--model_id', type=str, default='test', help='model id')
+    parser.add_argument('--model', type=str, default='Autoformer',
+                        help='model name, options: [Autoformer, Transformer, TimesNet]')
+
+    # data loader
+    parser.add_argument('--data', type=str, default='ETTm1', help='dataset type')
     parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
@@ -114,10 +124,56 @@ def build_parser():
     return parser
 
 
+
+def apply_battery_quickstart_defaults(args):
+    """Use battery SOH defaults when run.py is launched without CLI args."""
+    battery_root = './dataset/battery/'
+    preferred_files = [
+        'battery_36Ah_70W_65W_1551.xlsx',
+        'battery_30Ah_1C_1C_2800.xlsx',
+    ]
+
+    data_path = preferred_files[0]
+    for file_name in preferred_files:
+        if os.path.exists(os.path.join(battery_root, file_name)):
+            data_path = file_name
+            break
+
+    args.task_name = 'long_term_forecast'
+    args.is_training = 1
+    args.model_id = 'battery_soh_20_1'
+    args.model = 'TimeKAN'
+    args.data = 'battery_soh'
+    args.root_path = battery_root
+    args.data_path = data_path
+    args.features = 'S'
+    args.target = 'soh'
+    args.seq_len = 20
+    args.label_len = 0
+    args.pred_len = 1
+    args.e_layers = 2
+    args.enc_in = 1
+    args.dec_in = 1
+    args.c_out = 1
+    args.des = 'Exp'
+    args.itr = 1
+    args.d_model = 16
+    args.d_ff = 32
+    args.batch_size = 32
+    args.learning_rate = 0.001
+    args.train_epochs = 20
+
+    print('[Info] No CLI args detected. Using battery SOH quickstart defaults.')
+    print(f'[Info] Using dataset: {os.path.join(args.root_path, args.data_path)}')
+
+
 def main():
     seed_everything(2021)
     parser = build_parser()
     args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        apply_battery_quickstart_defaults(args)
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
     # On Windows, multiprocessing dataloader is stricter. Keep default behavior,

@@ -51,6 +51,7 @@ pip install -r requirements.txt
 cd TimeKAN-main
 scripts\Battery\soh_20_1.bat
 ```
+- Or run `run.py` directly in PyCharm (without parameters) after setting Working Directory to `TimeKAN-main`; it will auto-load battery SOH quickstart defaults.
 - If your machine has no GPU, add `--use_gpu False` to the command in `.bat`.
 
 ## Acknowledgement
