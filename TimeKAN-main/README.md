@@ -53,6 +53,10 @@ scripts\Battery\soh_20_1.bat
 ```
 - Or run `run.py` directly in PyCharm (without parameters) after setting Working Directory to `TimeKAN-main`; it will auto-load battery SOH quickstart defaults.
 - If your machine has no GPU, add `--use_gpu False` to the command in `.bat`.
+- After testing, results now also include:
+  - `results/<setting>/prediction_vs_truth.png` (overall prediction curve visualization)
+  - `results/<setting>/prediction_vs_truth.csv` (true/pred pairs)
+  - `r2` printed in console and saved into `metrics.npy`.
 - Troubleshooting: if you see `argparse.ArgumentError: ... conflicting option string: --task_name`, you are likely running an older duplicated `run.py`; update/sync `TimeKAN-main/run.py` and ensure PyCharm uses this file as Script path.
 
 ## Acknowledgement
