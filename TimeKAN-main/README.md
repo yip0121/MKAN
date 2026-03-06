@@ -37,6 +37,23 @@ sh scripts/long_term_forecast/Weather/weather_96.sh
   - `--data_path battery_36Ah_70W_65W_1551.xlsx`
 
 
+## Windows Quick Start (Battery SOH)
+- Recommended Python: **3.10** (PyTorch 1.13.1 is more stable on Windows with 3.10 than 3.12).
+- Create environment and install:
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+- Run battery SOH script on Windows CMD:
+```bat
+cd TimeKAN-main
+scripts\Battery\soh_20_1.bat
+```
+- Or run `run.py` directly in PyCharm (without parameters) after setting Working Directory to `TimeKAN-main`; it will auto-load battery SOH quickstart defaults.
+- If your machine has no GPU, add `--use_gpu False` to the command in `.bat`.
+
 ## Acknowledgement
 
 We sincerely appreciate the following github repo very much for the valuable code base and datasets:
