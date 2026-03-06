@@ -288,3 +288,8 @@ class Dataset_Custom(Dataset):
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
 
+
+
+class Dataset_BatterySOH(Dataset_Custom):
+    """Battery SOH dataset loader (reuses Dataset_Custom behavior)."""
+    pass
