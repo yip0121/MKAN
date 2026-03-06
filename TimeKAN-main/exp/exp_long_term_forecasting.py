@@ -3,7 +3,7 @@ from torch.optim import lr_scheduler
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, save_to_csv, visual_weights
-from utils.metrics import metric
+from utils.metrics import metric, R2
 import torch
 import torch.nn as nn
 from torch import optim
@@ -297,20 +297,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             os.makedirs(folder_path)
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
+        r2 = R2(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
-        print('rmse:{}, mape:{}, mspe:{}'.format(rmse, mape, mspe))
+        print('rmse:{}, mape:{}, mspe:{}, r2:{}'.format(rmse, mape, mspe, r2))
 
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
         if self.args.data == 'PEMS':
-            f.write('mae:{}, mape:{}, rmse:{}'.format(mae, mape, rmse))
+            f.write('mae:{}, mape:{}, rmse:{}, r2:{}'.format(mae, mape, rmse, r2))
         else:
-            f.write('mse:{}, mae:{}'.format(mse, mae))
+            f.write('mse:{}, mae:{}, r2:{}'.format(mse, mae, r2))
         f.write('\n')
         f.write('\n')
         f.close()
 
-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe, r2]))
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)
+
+        # Save an easy-to-check global visualization and csv for prediction quality.
+        true_series = trues[:, :, -1].reshape(-1)
+        pred_series = preds[:, :, -1].reshape(-1)
+        visual(true_series, pred_series, os.path.join(folder_path, 'prediction_vs_truth.png'))
+        save_to_csv(true_series, pred_series, os.path.join(folder_path, 'prediction_vs_truth.csv'))
+        print('Saved visualization to:', os.path.join(folder_path, 'prediction_vs_truth.png'))
+        print('Saved prediction csv to:', os.path.join(folder_path, 'prediction_vs_truth.csv'))
         return

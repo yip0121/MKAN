@@ -13,6 +13,7 @@ nvidia-cuda-runtime-cu11==11.7.99
 nvidia-cudnn-cu11==8.5.0.96
 packaging==24.1
 pandas==1.1.5
+openpyxl==3.1.5
 patool==1.12
 patsy==0.5.6
 pillow==10.4.0
