@@ -352,3 +352,7 @@ class Dataset_BatterySOH(Dataset):
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
+
+class Dataset_BatterySOH(Dataset_Custom):
+    """Battery SOH dataset loader (reuses Dataset_Custom behavior)."""
+    pass

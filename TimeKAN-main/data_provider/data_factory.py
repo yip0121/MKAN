@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_BatterySOH
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
 
@@ -8,6 +8,7 @@ data_dict = {
     'ETTm1': Dataset_ETT_minute,
     'ETTm2': Dataset_ETT_minute,
     'custom': Dataset_Custom,
+    'battery_soh': Dataset_BatterySOH,
 }
 
 
