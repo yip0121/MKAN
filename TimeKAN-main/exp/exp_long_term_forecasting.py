@@ -226,6 +226,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 elif pred.ndim == 1:
                     pred = pred[:, None]
 
+                pred = outputs.detach().cpu().numpy()
+                true = batch_y.detach().cpu().numpy()
                 preds.append(pred)
                 trues.append(y_true)
 
