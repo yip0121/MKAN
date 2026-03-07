@@ -223,6 +223,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
                 pred = outputs.detach().cpu().numpy()[0]
 
+                pred = outputs.detach().cpu().numpy()
+                true = batch_y.detach().cpu().numpy()
                 preds.append(pred)
                 trues.append(y_true)
 
