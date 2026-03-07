@@ -38,6 +38,7 @@ sh scripts/long_term_forecast/Weather/weather_96.sh
 
 
 ## Windows Quick Start (Battery SOH)
+- This repository pipeline is now streamlined for `battery_soh` forecasting only (MKAN/TimeKAN + SOH).
 - Recommended Python: **3.10** (PyTorch 1.13.1 is more stable on Windows with 3.10 than 3.12).
 - Create environment and install:
 ```bash
@@ -58,6 +59,19 @@ scripts\Battery\soh_20_1.bat
   - `results/<setting>/prediction_vs_truth.csv` (true/pred pairs)
   - `r2` printed in console and saved into `metrics.npy`.
 - Troubleshooting: if you see `argparse.ArgumentError: ... conflicting option string: --task_name`, you are likely running an older duplicated `run.py`; update/sync `TimeKAN-main/run.py` and ensure PyCharm uses this file as Script path.
+
+
+
+### Battery file format expected by the SOH loader
+- Column 1: cycle index (for reference).
+- Column 4: SOH value (already precomputed by you).
+- The loader now reads SOH directly from column 4 and does not recompute SOH from capacity.
+
+### Train/Val/Test split arguments
+- You can control split ratios directly in `run.py` arguments:
+  - `--train_ratio` (default `0.7`)
+  - `--val_ratio` (default `0.1`)
+  - test ratio is `1 - train_ratio - val_ratio`
 
 ## Acknowledgement
 

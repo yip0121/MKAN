@@ -26,4 +26,6 @@ python -u run.py ^
   --batch_size 32 ^
   --learning_rate 0.001 ^
   --train_epochs 20 ^
-  --num_workers 0
+  --num_workers 0 ^
+  --train_ratio 0.7 ^
+  --val_ratio 0.1
