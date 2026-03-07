@@ -163,7 +163,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return self.model
 
 
-    def _test_single_step_loader(self, test_loader, test_plot_folder):
+    def _test_single_step_loader(self, test_loader):
         preds = []
         trues = []
         with torch.no_grad():
@@ -184,13 +184,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     input_data = batch_x.detach().cpu().numpy()
                     gt = np.concatenate((input_data[0, :, -1], true[0, :, -1]), axis=0)
                     pd = np.concatenate((input_data[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(test_plot_folder, str(i) + '.pdf'))
 
         preds = np.array(preds).reshape(-1, preds[0].shape[-2], preds[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
         return preds, trues
 
-    def _test_multi_step_autoregressive(self, test_data, test_plot_folder):
+    def _test_multi_step_autoregressive(self, test_data):
         """Non-overlapping multi-step evaluation with recursive input update.
 
         When pred_len > 1:
@@ -221,7 +220,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = torch.zeros((1, label_plus_pred, 1), dtype=torch.float32).to(self.device)
 
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
-                pred = outputs.detach().cpu().numpy()[0]
+                pred = outputs.detach().cpu().numpy()
+                if pred.ndim == 3:
+                    pred = pred[0]
+                elif pred.ndim == 1:
+                    pred = pred[:, None]
 
                 pred = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
@@ -230,11 +233,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 # Feed predictions back as future inputs
                 rolling_series[start + seq_len:start + seq_len + pred_len] = pred
-
-                if chunk_idx % 20 == 0:
-                    gt = np.concatenate((x_window[:, -1], y_true[:, -1]), axis=0)
-                    pd = np.concatenate((x_window[:, -1], pred[:, -1]), axis=0)
-                    visual(gt, pd, os.path.join(test_plot_folder, f'multi_{chunk_idx}.pdf'))
 
                 # Next block starts from previous block end (non-overlap)
                 start += pred_len
@@ -251,17 +249,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
-        test_plot_folder = './test_results/' + setting + '/'
-        if not os.path.exists(test_plot_folder):
-            os.makedirs(test_plot_folder)
-
         self.model.eval()
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1).')
-            preds, trues = self._test_single_step_loader(test_loader, test_plot_folder)
+            preds, trues = self._test_single_step_loader(test_loader)
         else:
             print(f'[Test] Multi-step autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
-            preds, trues = self._test_multi_step_autoregressive(test_data, test_plot_folder)
+            preds, trues = self._test_multi_step_autoregressive(test_data)
 
         print('test shape:', preds.shape, trues.shape)
 

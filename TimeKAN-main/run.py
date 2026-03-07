@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import re
 
 import numpy as np
 import torch
@@ -99,6 +100,14 @@ def validate_split_args(args):
 
 
 
+
+def build_dataset_size_tag(data_path):
+    base = os.path.basename(data_path)
+    m = re.search(r'(\d+Ah)', base, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return os.path.splitext(base)[0]
+
 def build_setting_name(args, ii):
     """Keep result/checkpoint folder naming compatible with the previous format."""
     return '{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
@@ -106,7 +115,7 @@ def build_setting_name(args, ii):
         args.model_id,
         args.comment,
         args.model,
-        args.data,
+        build_dataset_size_tag(args.data_path),
         args.seq_len,
         args.pred_len,
         args.d_model,
