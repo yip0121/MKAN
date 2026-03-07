@@ -67,6 +67,10 @@ scripts\Battery\soh_20_1.bat
 - Column 4: SOH value (already precomputed by you).
 - The loader now reads SOH directly from column 4 and does not recompute SOH from capacity.
 
+- Multi-step prediction behavior:
+  - If `pred_len == 1`: normal single-step test through dataloader windows.
+  - If `pred_len > 1`: non-overlapping autoregressive multi-step mode is enabled automatically (`stride = pred_len`), and each new block uses previous block predictions as part of the next input.
+
 ### Train/Val/Test split arguments
 - You can control split ratios directly in `run.py` arguments:
   - `--train_ratio` (default `0.7`)

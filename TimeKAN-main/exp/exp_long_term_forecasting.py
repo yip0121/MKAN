@@ -162,19 +162,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.load_state_dict(torch.load(best_model_path))
         return self.model
 
-    def test(self, setting, test=0):
-        test_data, test_loader = self._get_data(flag='test')
-        if test:
-            print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
+    def _test_single_step_loader(self, test_loader, test_plot_folder):
         preds = []
         trues = []
-        test_plot_folder = './test_results/' + setting + '/'
-        if not os.path.exists(test_plot_folder):
-            os.makedirs(test_plot_folder)
-
-        self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
@@ -197,6 +188,81 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = np.array(preds).reshape(-1, preds[0].shape[-2], preds[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
+        return preds, trues
+
+    def _test_multi_step_autoregressive(self, test_data, test_plot_folder):
+        """Non-overlapping multi-step evaluation with recursive input update.
+
+        When pred_len > 1:
+        - stride = pred_len
+        - next prediction starts from previous prediction end
+        - newly predicted values are fed back as future input
+        """
+        source_series = test_data.data_x.astype(np.float32).copy()
+        rolling_series = source_series.copy()
+
+        seq_len = self.args.seq_len
+        pred_len = self.args.pred_len
+        label_plus_pred = self.args.label_len + pred_len
+
+        preds = []
+        trues = []
+
+        start = 0
+        chunk_idx = 0
+        with torch.no_grad():
+            while start + seq_len + pred_len <= len(source_series):
+                x_window = rolling_series[start:start + seq_len]
+                y_true = source_series[start + seq_len:start + seq_len + pred_len]
+
+                batch_x = torch.from_numpy(x_window).unsqueeze(0).float().to(self.device)
+                batch_y = torch.zeros((1, label_plus_pred, x_window.shape[-1]), dtype=torch.float32).to(self.device)
+                batch_x_mark = torch.zeros((1, seq_len, 1), dtype=torch.float32).to(self.device)
+                batch_y_mark = torch.zeros((1, label_plus_pred, 1), dtype=torch.float32).to(self.device)
+
+                outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
+                pred = outputs.detach().cpu().numpy()[0]
+
+                pred = outputs.detach().cpu().numpy()
+                true = batch_y.detach().cpu().numpy()
+                preds.append(pred)
+                trues.append(y_true)
+
+                # Feed predictions back as future inputs
+                rolling_series[start + seq_len:start + seq_len + pred_len] = pred
+
+                if chunk_idx % 20 == 0:
+                    gt = np.concatenate((x_window[:, -1], y_true[:, -1]), axis=0)
+                    pd = np.concatenate((x_window[:, -1], pred[:, -1]), axis=0)
+                    visual(gt, pd, os.path.join(test_plot_folder, f'multi_{chunk_idx}.pdf'))
+
+                # Next block starts from previous block end (non-overlap)
+                start += pred_len
+                chunk_idx += 1
+
+        if len(preds) == 0:
+            raise ValueError('Not enough test samples for the current seq_len/pred_len in multi-step mode.')
+
+        return np.array(preds), np.array(trues)
+
+    def test(self, setting, test=0):
+        test_data, test_loader = self._get_data(flag='test')
+        if test:
+            print('loading model')
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+
+        test_plot_folder = './test_results/' + setting + '/'
+        if not os.path.exists(test_plot_folder):
+            os.makedirs(test_plot_folder)
+
+        self.model.eval()
+        if self.args.pred_len == 1:
+            print('[Test] Single-step mode active (pred_len=1).')
+            preds, trues = self._test_single_step_loader(test_loader, test_plot_folder)
+        else:
+            print(f'[Test] Multi-step autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
+            preds, trues = self._test_multi_step_autoregressive(test_data, test_plot_folder)
+
         print('test shape:', preds.shape, trues.shape)
 
         result_folder = './results/' + setting + '/'
