@@ -1,0 +1,66 @@
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl20_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:4.802348939847434e-06, mae:0.001555052469484508, r2:0.8462470918893814
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl20_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:4.579526375891874e-06, mae:0.001529173692688346, r2:0.853381022810936
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl20_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:4.822790288017131e-06, mae:0.0015931829111650586, r2:0.8455926477909088
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl48_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:4.646480647352291e-06, mae:0.0015338181983679533, r2:0.8512374013662338
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl48_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:4.594296115101315e-06, mae:0.0015175020089372993, r2:0.8529081493616104
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl48_pl48_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:2.095047602779232e-05, mae:0.0034653206821531057, r2:0.3367394208908081
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl96_pl48_dm16_nh4_el3_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:2.290265547344461e-05, mae:0.003757463302463293, r2:0.274936318397522
+
+long_term_forecast_battery_soh_20_1_none_TimeKAN_battery_soh_sl96_pl48_dm16_nh4_el3_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:2.551845318521373e-05, mae:0.003945441450923681, r2:0.1921241283416748
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl24_pl1_dm16_el2_df32_0  
+mse:0.035301584750413895, mae:0.13906453549861908, r2:0.9896022416651249
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl24_pl10_dm16_el2_df32_0  
+mse:0.0631718710064888, mae:0.18903975188732147, r2:0.9797236043959856
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl96_pl96_dm16_el2_df32_0  
+mse:0.4183364808559418, mae:0.5426262021064758, r2:0.8422172516584396
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl96_pl1_dm16_el2_df32_0  
+mse:0.04731733724474907, mae:0.1623792052268982, r2:0.9860631134361029
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl96_pl1_dm16_el2_df32_0  
+mse:0.4090121388435364, mae:0.38085493445396423, r2:0.813736617565155
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl20_pl1_dm16_el2_df32_0  
+mse:0.3639792203903198, mae:0.3214874863624573, r2:0.8342445343732834
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl30_pl1_dm32_el2_df32_0  
+mse:0.3736415207386017, mae:0.33669450879096985, r2:0.8325202763080597
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl30_pl1_dm32_el2_df32_0  
+mse:0.17221778631210327, mae:0.2504560649394989, r2:0.6961910724639893
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl48_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:0.15709349513053894, mae:0.2326415628194809, r2:0.7228718101978302
+
+long_term_forecast_battery_soh_none_TimeKAN_battery_soh_sl48_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:0.16089890897274017, mae:0.2358986735343933, r2:0.7161586880683899
+
+long_term_forecast_battery_soh_none_TimeKAN_30Ah_sl48_pl12_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:1.2665318250656128, mae:0.8983591198921204, r2:-1.233062982559204
+
+long_term_forecast_battery_soh_none_TimeKAN_30Ah_sl48_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:0.16089890897274017, mae:0.2358986735343933, r2:0.7161586880683899
+
+long_term_forecast_battery_soh_none_TimeKAN_30Ah_sl24_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:0.1679760068655014, mae:0.24931937456130981, r2:0.7036739885807037
+
+long_term_forecast_battery_soh_none_TimeKAN_36Ah_sl24_pl1_dm16_nh4_el2_dl1_df32_fc1_ebtimeF_dtTrue_Exp_0  
+mse:0.032608065754175186, mae:0.1322549730539322, r2:0.990395593456924
+
