@@ -98,6 +98,28 @@ def validate_split_args(args):
         raise ValueError('train_ratio + val_ratio must be < 1, leaving space for test set')
 
 
+
+def build_setting_name(args, ii):
+    """Keep result/checkpoint folder naming compatible with the previous format."""
+    return '{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+        args.task_name,
+        args.model_id,
+        args.comment,
+        args.model,
+        args.data,
+        args.seq_len,
+        args.pred_len,
+        args.d_model,
+        args.n_heads,
+        args.e_layers,
+        args.d_layers,
+        args.d_ff,
+        args.factor,
+        args.embed,
+        args.distil,
+        args.des, ii
+    )
+
 def main():
     seed_everything(2021)
     parser = build_parser()
@@ -125,18 +147,7 @@ def main():
 
     if args.is_training:
         for ii in range(args.itr):
-            setting = '{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_el{}_df{}_{}'.format(
-                args.task_name,
-                args.model_id,
-                args.comment,
-                args.model,
-                args.data,
-                args.seq_len,
-                args.pred_len,
-                args.d_model,
-                args.e_layers,
-                args.d_ff,
-                ii)
+            setting = build_setting_name(args, ii)
 
             exp = Exp(args)
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
@@ -147,18 +158,7 @@ def main():
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_el{}_df{}_{}'.format(
-            args.task_name,
-            args.model_id,
-            args.comment,
-            args.model,
-            args.data,
-            args.seq_len,
-            args.pred_len,
-            args.d_model,
-            args.e_layers,
-            args.d_ff,
-            ii)
+        setting = build_setting_name(args, ii)
 
         exp = Exp(args)
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
