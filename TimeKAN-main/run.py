@@ -7,6 +7,7 @@ import numpy as np
 import torch
 
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
+from optimize.bayes_opt import run_bayesian_optimization
 
 
 def seed_everything(seed: int = 2021):
@@ -73,6 +74,13 @@ def build_parser():
     parser.add_argument('--pct_start', type=float, default=0.2)
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--use_amp', action='store_true', default=False)
+
+    # bayesian optimization
+    parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--bayes_trials', type=int, default=15, help='number of Bayesian optimization trials')
+    parser.add_argument('--bayes_train_epochs', type=int, default=8, help='epochs per Bayesian trial')
+    parser.add_argument('--bayes_timeout', type=int, default=0, help='timeout seconds for Bayesian optimization; <=0 means no timeout')
+    parser.add_argument('--bayes_refit', action='store_true', default=False, help='after Bayesian optimization, refit once with best parameters')
 
     # misc kept for compatibility with existing experiment naming
     parser.add_argument('--comment', type=str, default='none')
@@ -165,6 +173,17 @@ def main():
     print(args)
 
     Exp = Exp_Long_Term_Forecast
+
+    if args.enable_bayes_opt:
+        print('[BayesOpt] Starting Bayesian hyper-parameter optimization...')
+        tuned_args = run_bayesian_optimization(args, Exp, build_setting_name)
+        print('[BayesOpt] Best params injected into runtime args.')
+        args = tuned_args
+        print('Args after BayesOpt:')
+        print(args)
+        if not args.bayes_refit:
+            print('[BayesOpt] bayes_refit is False; skipping final retraining.')
+            return
 
     if args.is_training:
         for ii in range(args.itr):
