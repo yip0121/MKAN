@@ -42,6 +42,7 @@ def build_parser():
     parser.add_argument('--seq_len', type=int, default=24)
     parser.add_argument('--label_len', type=int, default=0)
     parser.add_argument('--pred_len', type=int, default=1)
+    parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
@@ -92,6 +93,16 @@ def build_parser():
     return parser
 
 
+
+def parse_quantiles(quantiles_str):
+    quantiles = [float(q.strip()) for q in quantiles_str.split(',') if q.strip() != '']
+    if len(quantiles) == 0:
+        raise ValueError('quantiles must not be empty')
+    for q in quantiles:
+        if q <= 0 or q >= 1:
+            raise ValueError(f'quantile must be in (0,1), got {q}')
+    return quantiles
+
 def validate_split_args(args):
     if args.train_ratio <= 0 or args.val_ratio < 0:
         raise ValueError('train_ratio must be > 0 and val_ratio must be >= 0')
@@ -134,6 +145,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
     validate_split_args(args)
+    args.quantiles = parse_quantiles(args.quantiles)
 
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
