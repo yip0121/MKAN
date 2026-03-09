@@ -16,9 +16,28 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual, save_to_csv
 warnings.filterwarnings('ignore')
 
 
+class PinballLoss(nn.Module):
+    def __init__(self, quantiles):
+        super().__init__()
+        q = torch.tensor(quantiles, dtype=torch.float32)
+        self.register_buffer('quantiles', q)
+
+    def forward(self, pred, target):
+        # pred: [B, T, Q], target: [B, T, 1]
+        target = target.expand_as(pred)
+        errors = target - pred
+        q = self.quantiles.view(1, 1, -1)
+        loss = torch.maximum(q * errors, (q - 1) * errors)
+        return loss.mean()
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
+        self.quantiles = np.array(self.args.quantiles, dtype=np.float32)
+        self.q_lower_idx = int(np.argmin(np.abs(self.quantiles - 0.05)))
+        self.q_median_idx = int(np.argmin(np.abs(self.quantiles - 0.5)))
+        self.q_upper_idx = int(np.argmin(np.abs(self.quantiles - 0.95)))
 
     def _build_model(self):
         model = self.model_dict[self.args.model].Model(self.args).float()
@@ -33,7 +52,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
 
     def _select_criterion(self):
-        return nn.MSELoss()
+        return PinballLoss(self.args.quantiles)
 
     def _build_decoder_input(self, batch_y):
         if self.args.down_sampling_layers == 0:
@@ -56,6 +75,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             else:
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
         return outputs
+
+    def _point_estimate(self, pred_quantiles):
+        return pred_quantiles[:, :, self.q_median_idx:self.q_median_idx + 1]
 
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
@@ -162,41 +184,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.load_state_dict(torch.load(best_model_path))
         return self.model
 
-
     def _test_single_step_loader(self, test_loader):
-        preds = []
+        preds_q = []
         trues = []
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
-
-                pred = outputs.detach().cpu().numpy()
+                pred_q = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
-                preds.append(pred)
+                preds_q.append(pred_q)
                 trues.append(true)
 
-                if i % 20 == 0:
-                    input_data = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input_data[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input_data[0, :, -1], pred[0, :, -1]), axis=0)
-
-        preds = np.array(preds).reshape(-1, preds[0].shape[-2], preds[0].shape[-1])
+        preds_q = np.array(preds_q).reshape(-1, preds_q[0].shape[-2], preds_q[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
-        return preds, trues
+        return preds_q, trues
 
     def _test_multi_step_autoregressive(self, test_data):
-        """Non-overlapping multi-step evaluation with recursive input update.
-
-        When pred_len > 1:
-        - stride = pred_len
-        - next prediction starts from previous prediction end
-        - newly predicted values are fed back as future input
-        """
         source_series = test_data.data_x.astype(np.float32).copy()
         rolling_series = source_series.copy()
 
@@ -204,11 +212,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         pred_len = self.args.pred_len
         label_plus_pred = self.args.label_len + pred_len
 
-        preds = []
+        preds_q = []
         trues = []
 
         start = 0
-        chunk_idx = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
                 x_window = rolling_series[start:start + seq_len]
@@ -220,28 +227,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = torch.zeros((1, label_plus_pred, 1), dtype=torch.float32).to(self.device)
 
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
-                pred = outputs.detach().cpu().numpy()
-                if pred.ndim == 3:
-                    pred = pred[0]
-                elif pred.ndim == 1:
-                    pred = pred[:, None]
+                pred_q = outputs.detach().cpu().numpy()
+                if pred_q.ndim == 3:
+                    pred_q = pred_q[0]
+                elif pred_q.ndim == 1:
+                    pred_q = pred_q[:, None]
 
-                pred = outputs.detach().cpu().numpy()
-                true = batch_y.detach().cpu().numpy()
-                preds.append(pred)
+                preds_q.append(pred_q)
                 trues.append(y_true)
 
-                # Feed predictions back as future inputs
-                rolling_series[start + seq_len:start + seq_len + pred_len] = pred
+                # Feed back median prediction only
+                pred_median = pred_q[:, self.q_median_idx:self.q_median_idx + 1]
+                rolling_series[start + seq_len:start + seq_len + pred_len] = pred_median
 
-                # Next block starts from previous block end (non-overlap)
                 start += pred_len
-                chunk_idx += 1
 
-        if len(preds) == 0:
+        if len(preds_q) == 0:
             raise ValueError('Not enough test samples for the current seq_len/pred_len in multi-step mode.')
 
-        return np.array(preds), np.array(trues)
+        return np.array(preds_q), np.array(trues)
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
@@ -252,12 +256,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.eval()
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1).')
-            preds, trues = self._test_single_step_loader(test_loader)
+            preds_q, trues = self._test_single_step_loader(test_loader)
         else:
             print(f'[Test] Multi-step autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
-            preds, trues = self._test_multi_step_autoregressive(test_data)
+            preds_q, trues = self._test_multi_step_autoregressive(test_data)
 
-        print('test shape:', preds.shape, trues.shape)
+        preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
+        pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
+        pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
+
+        print('test shape:', preds_q.shape, trues.shape)
 
         result_folder = './results/' + setting + '/'
         if not os.path.exists(result_folder):
@@ -275,11 +283,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         np.save(result_folder + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe, r2]))
         np.save(result_folder + 'pred.npy', preds)
+        np.save(result_folder + 'pred_quantiles.npy', preds_q)
         np.save(result_folder + 'true.npy', trues)
 
         true_series = trues[:, :, -1].reshape(-1)
         pred_series = preds[:, :, -1].reshape(-1)
+        lower_series = pred_lower[:, :, -1].reshape(-1)
+        upper_series = pred_upper[:, :, -1].reshape(-1)
+
         visual(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.png'))
-        save_to_csv(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.csv'))
+
+        import pandas as pd
+        pd.DataFrame(
+            {
+                'true': true_series,
+                'pred_median_q0.50': pred_series,
+                f'pred_lower_q{self.quantiles[self.q_lower_idx]:.2f}': lower_series,
+                f'pred_upper_q{self.quantiles[self.q_upper_idx]:.2f}': upper_series,
+            }
+        ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
+
         print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))

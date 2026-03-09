@@ -71,6 +71,13 @@ scripts\Battery\soh_20_1.bat
   - If `pred_len == 1`: normal single-step test through dataloader windows.
   - If `pred_len > 1`: non-overlapping autoregressive multi-step mode is enabled automatically (`stride = pred_len`), and each new block uses previous block predictions as part of the next input.
 
+- Quantile regression mode (Pinball Loss):
+  - Configure quantiles with `--quantiles` (default: `0.95,0.5,0.05`).
+  - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
+  - Saved artifacts include `pred_quantiles.npy`, and CSV columns for lower/median/upper bounds (90% interval by default).
+- Temporal module update:
+  - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
+
 ### Train/Val/Test split arguments
 - You can control split ratios directly in `run.py` arguments:
   - `--train_ratio` (default `0.7`)
