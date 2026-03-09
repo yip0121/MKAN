@@ -79,6 +79,27 @@ scripts\Battery\soh_20_1.bat
 - Temporal module update:
   - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
 
+
+### Bayesian hyper-parameter optimization (optional)
+Enable Bayesian optimization (Optuna/TPE) from `run.py`:
+- `--enable_bayes_opt`
+- `--bayes_trials 15`
+- `--bayes_train_epochs 8`
+- `--bayes_timeout 0`
+- `--bayes_refit` (run final training once with best params)
+
+Current optimized parameter ranges are defined in `optimize/bayes_opt.py` (`SEARCH_SPACE`):
+- `learning_rate`: [1e-4, 5e-3] (log scale)
+- `batch_size`: {16, 32, 64}
+- `d_model`: {8, 16, 32, 64}
+- `e_layers`: [1, 4]
+- `d_ff`: {16, 32, 64, 128}
+- `dropout`: [0.0, 0.3]
+- `begin_order`: [1, 4]
+- `down_sampling_layers`: [0, 2]
+
+Optimization objective is validation/test pipeline MSE from each trial's saved `metrics.npy` (index 1).
+
 ### Train/Val/Test split arguments
 - You can control split ratios directly in `run.py` arguments:
   - `--train_ratio` (default `0.7`)
