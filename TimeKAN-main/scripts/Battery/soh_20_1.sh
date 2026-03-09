@@ -25,4 +25,6 @@ python -u run.py \
   --d_ff 32 \
   --batch_size 32 \
   --learning_rate 0.001 \
-  --train_epochs 20
+  --train_epochs 20 \
+  --train_ratio 0.7 \
+  --val_ratio 0.1
