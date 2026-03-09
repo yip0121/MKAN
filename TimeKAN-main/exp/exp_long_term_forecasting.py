@@ -101,7 +101,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
-        path = os.path.join(self.args.checkpoints, setting)
+        path = os.path.join(self.args.project_root, self.args.checkpoints.lstrip('./').rstrip('/'), setting)
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -252,7 +252,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join(self.args.project_root, 'checkpoints', setting, 'checkpoint.pth')))
 
         self.model.eval()
         if self.args.pred_len == 1:
@@ -268,7 +268,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         print('test shape:', preds_q.shape, trues.shape)
 
-        result_folder = './results/' + setting + '/'
+        result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
         if not os.path.exists(result_folder):
             os.makedirs(result_folder)
 
@@ -277,7 +277,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print(f'mse:{mse}, mae:{mae}')
         print(f'rmse:{rmse}, mape:{mape}, mspe:{mspe}, r2:{r2}')
 
-        with open('result_long_term_forecast.txt', 'a') as f:
+        with open(os.path.join(self.args.project_root, 'result_long_term_forecast.txt'), 'a') as f:
             f.write(setting + '  \n')
             f.write(f'mse:{mse}, mae:{mae}, r2:{r2}')
             f.write('\n\n')
@@ -314,3 +314,5 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
         print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
+        print('Saved metrics to:', os.path.join(result_folder, 'metrics.npy'))
+        print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.npy'))
