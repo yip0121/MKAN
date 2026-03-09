@@ -3,6 +3,7 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 
 
 # Reasonable high-impact search space for current SOH workflow.
@@ -74,6 +75,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         mse = float(metrics[1])
         trial.set_user_attr('setting', setting)
         trial.set_user_attr('sampled', sampled)
+        print(f"[BayesOpt][Trial {trial.number}] setting={setting} mse={mse:.6f} params={sampled}")
         return mse
 
     sampler = optuna.samplers.TPESampler(seed=2021)
@@ -85,18 +87,34 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     print('[BayesOpt] Best value (MSE):', study.best_value)
     print('[BayesOpt] Best params:', study.best_params)
 
-    # Persist study summary
+    # Persist study summary and all trial records
     os.makedirs('results', exist_ok=True)
-    with open(os.path.join('results', 'bayes_opt_best.json'), 'w', encoding='utf-8') as f:
-        json.dump(
-            {
-                'best_value': study.best_value,
-                'best_params': study.best_params,
-                'best_setting': study.best_trial.user_attrs.get('setting', ''),
-            },
-            f,
-            indent=2,
-        )
+    best_path = os.path.join('results', 'bayes_opt_best.json')
+    trials_path = os.path.join('results', 'bayes_opt_trials.csv')
+
+    best_payload = {
+        'best_value': study.best_value,
+        'best_params': study.best_params,
+        'best_setting': study.best_trial.user_attrs.get('setting', ''),
+        'n_trials': len(study.trials),
+    }
+    with open(best_path, 'w', encoding='utf-8') as f:
+        json.dump(best_payload, f, indent=2)
+
+    trial_rows = []
+    for t in study.trials:
+        row = {
+            'trial': t.number,
+            'value_mse': t.value,
+            'state': str(t.state),
+            'setting': t.user_attrs.get('setting', ''),
+        }
+        row.update(t.params)
+        trial_rows.append(row)
+    pd.DataFrame(trial_rows).to_csv(trials_path, index=False)
+
+    print(f'[BayesOpt] Saved best summary to: {best_path}')
+    print(f'[BayesOpt] Saved trial table to: {trials_path}')
 
     tuned_args = copy.deepcopy(base_args)
     for k, v in study.best_params.items():
