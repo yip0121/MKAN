@@ -41,3 +41,13 @@ def metric(pred, true):
     mspe = MSPE(pred, true)
 
     return mae, mse, rmse, mape, mspe
+
+
+def R2(pred, true):
+    pred_flat = pred.reshape(-1)
+    true_flat = true.reshape(-1)
+    ss_res = np.sum((true_flat - pred_flat) ** 2)
+    ss_tot = np.sum((true_flat - np.mean(true_flat)) ** 2)
+    if ss_tot == 0:
+        return 0.0
+    return 1 - ss_res / ss_tot
