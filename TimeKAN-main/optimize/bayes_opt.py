@@ -67,7 +67,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         exp.train(setting)
         exp.test(setting)
 
-        metrics_path = os.path.join('results', setting, 'metrics.npy')
+        metrics_path = os.path.join(base_args.project_root, 'results', setting, 'metrics.npy')
         if not os.path.exists(metrics_path):
             raise FileNotFoundError(f'Expected metrics file missing: {metrics_path}')
 
@@ -88,9 +88,9 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     print('[BayesOpt] Best params:', study.best_params)
 
     # Persist study summary and all trial records
-    os.makedirs('results', exist_ok=True)
-    best_path = os.path.join('results', 'bayes_opt_best.json')
-    trials_path = os.path.join('results', 'bayes_opt_trials.csv')
+    os.makedirs(os.path.join(base_args.project_root, 'results'), exist_ok=True)
+    best_path = os.path.join(base_args.project_root, 'results', 'bayes_opt_best.json')
+    trials_path = os.path.join(base_args.project_root, 'results', 'bayes_opt_trials.csv')
 
     best_payload = {
         'best_value': study.best_value,

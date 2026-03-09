@@ -98,6 +98,9 @@ def build_parser():
     parser.add_argument('--use_multi_gpu', action='store_true', default=False)
     parser.add_argument('--devices', type=str, default='0,1')
 
+    # internal path control (auto-filled in main)
+    parser.add_argument('--project_root', type=str, default='')
+
     return parser
 
 
@@ -152,6 +155,7 @@ def main():
     seed_everything(2021)
     parser = build_parser()
     args = parser.parse_args()
+    args.project_root = os.path.dirname(os.path.abspath(__file__))
     validate_split_args(args)
     args.quantiles = parse_quantiles(args.quantiles)
 
@@ -169,6 +173,7 @@ def main():
 
     test_ratio = 1 - args.train_ratio - args.val_ratio
     print(f'Data split => train: {args.train_ratio:.2f}, val: {args.val_ratio:.2f}, test: {test_ratio:.2f}')
+    print('Project root:', args.project_root)
     print('Args in experiment:')
     print(args)
 
