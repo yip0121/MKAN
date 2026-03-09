@@ -11,7 +11,7 @@ from torch.optim import lr_scheduler
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.metrics import metric, R2
-from utils.tools import EarlyStopping, adjust_learning_rate, visual, save_to_csv
+from utils.tools import EarlyStopping, adjust_learning_rate, visual, visual_with_interval, save_to_csv
 
 warnings.filterwarnings('ignore')
 
@@ -292,6 +292,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         lower_series = pred_lower[:, :, -1].reshape(-1)
         upper_series = pred_upper[:, :, -1].reshape(-1)
 
+        visual_with_interval(
+            true_series,
+            pred_series,
+            lower_series,
+            upper_series,
+            os.path.join(result_folder, 'prediction_vs_truth_with_interval.png')
+        )
         visual(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.png'))
 
         import pandas as pd
@@ -305,4 +312,5 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
         print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
+        print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))

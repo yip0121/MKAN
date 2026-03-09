@@ -75,6 +75,7 @@ scripts\Battery\soh_20_1.bat
   - Configure quantiles with `--quantiles` (default: `0.95,0.5,0.05`).
   - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
   - Saved artifacts include `pred_quantiles.npy`, and CSV columns for lower/median/upper bounds (90% interval by default).
+  - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
 - Temporal module update:
   - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
 
