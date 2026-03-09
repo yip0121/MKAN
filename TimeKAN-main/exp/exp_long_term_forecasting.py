@@ -52,7 +52,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
 
     def _select_criterion(self):
-        return PinballLoss(self.args.quantiles)
+        # Keep quantile tensor on the same device as model outputs (CPU/GPU).
+        return PinballLoss(self.args.quantiles).to(self.device)
 
     def _build_decoder_input(self, batch_y):
         if self.args.down_sampling_layers == 0:
