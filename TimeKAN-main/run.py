@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import random
 import re
@@ -152,6 +153,39 @@ def build_setting_name(args, ii):
     )
 
 
+
+
+def read_metrics_csv(metrics_path):
+    import pandas as pd
+    metrics_df = pd.read_csv(metrics_path)
+    required_cols = ['mae', 'mse', 'rmse', 'mape', 'mspe', 'r2']
+    if metrics_df.empty or not all(col in metrics_df.columns for col in required_cols):
+        return None
+    row = metrics_df.iloc[0]
+    return {col: float(row[col]) for col in required_cols}
+
+
+def update_bayes_json_with_refit(args, refit_setting):
+    best_path = os.path.join(args.project_root, 'results', 'bayes_opt_best.json')
+    refit_metrics_path = os.path.join(args.project_root, 'results', refit_setting, 'metrics.csv')
+    if not os.path.exists(best_path) or not os.path.exists(refit_metrics_path):
+        return
+
+    with open(best_path, 'r', encoding='utf-8') as f:
+        payload = json.load(f)
+
+    refit_metrics = read_metrics_csv(refit_metrics_path)
+    if refit_metrics is None:
+        return
+
+    payload['refit_setting'] = refit_setting
+    payload['refit_metrics'] = refit_metrics
+
+    with open(best_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, indent=2)
+
+    print(f'[BayesOpt] Updated best summary with refit metrics: {best_path}')
+
 def print_result_summary(args, setting, header='Result Summary'):
     metrics_path = os.path.join(args.project_root, 'results', setting, 'metrics.csv')
     fig_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth_with_interval.png')
@@ -159,14 +193,11 @@ def print_result_summary(args, setting, header='Result Summary'):
 
     print(f'[{header}] setting: {setting}')
     if os.path.exists(metrics_path):
-        import pandas as pd
-        metrics_df = pd.read_csv(metrics_path)
-        required_cols = ['mae', 'mse', 'rmse', 'mape', 'mspe', 'r2']
-        if not metrics_df.empty and all(col in metrics_df.columns for col in required_cols):
-            row = metrics_df.iloc[0]
-            print(f'[{header}] mae={row["mae"]:.6f}, mse={row["mse"]:.6f}, rmse={row["rmse"]:.6f}, mape={row["mape"]:.6f}, mspe={row["mspe"]:.6f}, r2={row["r2"]:.6f}')
+        metrics = read_metrics_csv(metrics_path)
+        if metrics is not None:
+            print(f'[{header}] mae={metrics["mae"]:.6f}, mse={metrics["mse"]:.6f}, rmse={metrics["rmse"]:.6f}, mape={metrics["mape"]:.6f}, mspe={metrics["mspe"]:.6f}, r2={metrics["r2"]:.6f}')
         else:
-            print(f'[{header}] metrics.csv exists but format unexpected: columns={list(metrics_df.columns)}')
+            print(f'[{header}] metrics.csv exists but format unexpected: {metrics_path}')
     else:
         print(f'[{header}] metrics not found: {metrics_path}')
 
@@ -215,6 +246,7 @@ def main():
             if best_info.get('best_setting', ''):
                 print_result_summary(args, best_info['best_setting'], header='BayesOpt Best Trial')
             return
+        print('[BayesOpt] bayes_refit is True; final training metrics can differ from best trial metrics due to more epochs/retraining.')
 
     if args.is_training:
         for ii in range(args.itr):
@@ -227,6 +259,8 @@ def main():
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
             exp.test(setting)
             print_result_summary(args, setting, header='Final Training Run')
+            if args.enable_bayes_opt and args.bayes_refit and ii == 0:
+                update_bayes_json_with_refit(args, setting)
             torch.cuda.empty_cache()
     else:
         ii = 0
