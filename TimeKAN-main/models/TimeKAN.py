@@ -25,6 +25,9 @@ class FrequencyDecomp(nn.Module):
         self.configs = configs
 
     def forward(self, level_list):
+        if len(level_list) <= 1:
+            return level_list
+
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
@@ -78,6 +81,9 @@ class FrequencyMixing(nn.Module):
         )
 
     def forward(self, level_list):
+        if len(level_list) <= 1:
+            return [self.front_block(level_list[0])]
+
         level_list_reverse = level_list.copy()
         level_list_reverse.reverse()
         out_low = level_list_reverse[0]
