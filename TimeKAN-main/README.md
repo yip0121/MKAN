@@ -100,7 +100,8 @@ Current optimized parameter ranges are defined in `optimize/bayes_opt.py` (`SEAR
 
 Optimization objective is validation/test pipeline MSE computed during each trial without saving trial result artifacts to `results/`.
 
-- If `--bayes_refit` is enabled, the final run (`*_bayes_best*`) is retrained and re-evaluated, so its metrics can differ from the best trial metrics in `bayes_opt_best.json`.
+- If `--bayes_refit` is enabled, the final run (`*_bayes_best*`) is retrained and re-evaluated, so its metrics can differ from the best trial metrics in `bayes_opt_best_trainXX.json`.
+- Bayes best summary filename now includes training split size (e.g. `bayes_opt_best_train70.json`).
 
 ### Train/Val/Test split arguments
 - You can control split ratios directly in `run.py` arguments:
