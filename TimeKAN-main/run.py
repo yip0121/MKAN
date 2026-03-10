@@ -165,8 +165,14 @@ def read_metrics_csv(metrics_path):
     return {col: float(row[col]) for col in required_cols}
 
 
+
+
+def build_bayes_best_path(args):
+    train_tag = int(round(float(args.train_ratio) * 100))
+    return os.path.join(args.project_root, 'results', f'bayes_opt_best_train{train_tag}.json')
+
 def update_bayes_json_with_refit(args, refit_setting):
-    best_path = os.path.join(args.project_root, 'results', 'bayes_opt_best.json')
+    best_path = build_bayes_best_path(args)
     refit_metrics_path = os.path.join(args.project_root, 'results', refit_setting, 'metrics.csv')
     if not os.path.exists(best_path) or not os.path.exists(refit_metrics_path):
         return

@@ -17,6 +17,12 @@ SEARCH_SPACE = {
 }
 
 
+
+
+def build_bayes_best_filename(base_args):
+    train_tag = int(round(float(base_args.train_ratio) * 100))
+    return f'bayes_opt_best_train{train_tag}.json'
+
 def _suggest(trial, name, spec):
     stype = spec[0]
     if stype == 'log_float':
@@ -83,7 +89,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
 
     # Persist best summary only (as requested)
     os.makedirs(os.path.join(base_args.project_root, 'results'), exist_ok=True)
-    best_path = os.path.join(base_args.project_root, 'results', 'bayes_opt_best.json')
+    best_path = os.path.join(base_args.project_root, 'results', build_bayes_best_filename(base_args))
 
     best_payload = {
         'best_value': study.best_value,
