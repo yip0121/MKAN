@@ -151,6 +151,26 @@ def build_setting_name(args, ii):
         args.des, ii
     )
 
+
+def print_result_summary(args, setting, header='Result Summary'):
+    metrics_path = os.path.join(args.project_root, 'results', setting, 'metrics.npy')
+    fig_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth_with_interval.png')
+    csv_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth.csv')
+
+    print(f'[{header}] setting: {setting}')
+    if os.path.exists(metrics_path):
+        metrics = np.load(metrics_path)
+        if len(metrics) >= 6:
+            mae, mse, rmse, mape, mspe, r2 = metrics[:6]
+            print(f'[{header}] mae={mae:.6f}, mse={mse:.6f}, rmse={rmse:.6f}, mape={mape:.6f}, mspe={mspe:.6f}, r2={r2:.6f}')
+        else:
+            print(f'[{header}] metrics.npy exists but format unexpected: {metrics}')
+    else:
+        print(f'[{header}] metrics not found: {metrics_path}')
+
+    print(f'[{header}] interval figure: {fig_path}')
+    print(f'[{header}] csv: {csv_path}')
+
 def main():
     seed_everything(2021)
     parser = build_parser()
@@ -181,13 +201,17 @@ def main():
 
     if args.enable_bayes_opt:
         print('[BayesOpt] Starting Bayesian hyper-parameter optimization...')
-        tuned_args = run_bayesian_optimization(args, Exp, build_setting_name)
+        tuned_args, best_info = run_bayesian_optimization(args, Exp, build_setting_name)
         print('[BayesOpt] Best params injected into runtime args.')
+        print('[BayesOpt] Final best parameter configuration:', best_info.get('best_params', {}))
+        print('[BayesOpt] Final best setting:', best_info.get('best_setting', ''))
         args = tuned_args
         print('Args after BayesOpt:')
         print(args)
         if not args.bayes_refit:
             print('[BayesOpt] bayes_refit is False; skipping final retraining.')
+            if best_info.get('best_setting', ''):
+                print_result_summary(args, best_info['best_setting'], header='BayesOpt Best Trial')
             return
 
     if args.is_training:
@@ -200,6 +224,7 @@ def main():
 
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
             exp.test(setting)
+            print_result_summary(args, setting, header='Final Training Run')
             torch.cuda.empty_cache()
     else:
         ii = 0
@@ -208,6 +233,7 @@ def main():
         exp = Exp(args)
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)
+        print_result_summary(args, setting, header='Test-Only Run')
         torch.cuda.empty_cache()
 
 

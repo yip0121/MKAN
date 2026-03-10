@@ -3,7 +3,6 @@ import json
 import os
 
 import numpy as np
-import pandas as pd
 
 
 # Reasonable high-impact search space for current SOH workflow.
@@ -87,10 +86,9 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     print('[BayesOpt] Best value (MSE):', study.best_value)
     print('[BayesOpt] Best params:', study.best_params)
 
-    # Persist study summary and all trial records
+    # Persist best summary only (as requested)
     os.makedirs(os.path.join(base_args.project_root, 'results'), exist_ok=True)
     best_path = os.path.join(base_args.project_root, 'results', 'bayes_opt_best.json')
-    trials_path = os.path.join(base_args.project_root, 'results', 'bayes_opt_trials.csv')
 
     best_payload = {
         'best_value': study.best_value,
@@ -101,24 +99,11 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     with open(best_path, 'w', encoding='utf-8') as f:
         json.dump(best_payload, f, indent=2)
 
-    trial_rows = []
-    for t in study.trials:
-        row = {
-            'trial': t.number,
-            'value_mse': t.value,
-            'state': str(t.state),
-            'setting': t.user_attrs.get('setting', ''),
-        }
-        row.update(t.params)
-        trial_rows.append(row)
-    pd.DataFrame(trial_rows).to_csv(trials_path, index=False)
-
     print(f'[BayesOpt] Saved best summary to: {best_path}')
-    print(f'[BayesOpt] Saved trial table to: {trials_path}')
 
     tuned_args = copy.deepcopy(base_args)
     for k, v in study.best_params.items():
         setattr(tuned_args, k, v)
 
     tuned_args.comment = f'{base_args.comment}_bayes_best'
-    return tuned_args
+    return tuned_args, best_payload
