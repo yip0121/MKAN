@@ -12,6 +12,8 @@ SEARCH_SPACE = {
     'e_layers': ('int', 1, 4),
     'd_ff': ('categorical', [16, 32, 64, 128]),
     'dropout': ('float', 0.0, 0.3),
+    'begin_order': ('int', 1, 4),
+    'down_sampling_layers': ('int', 0, 2),
 }
 
 
@@ -31,7 +33,7 @@ def _suggest(trial, name, spec):
 def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     """Run Optuna (TPE) Bayesian optimization and return updated args.
 
-    Objective: minimize MSE returned by exp.test metrics for each trial.
+    Objective: minimize MSE from saved metrics.csv after each trial.
     """
     try:
         import optuna
@@ -61,8 +63,17 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         setting = build_setting_name_fn(args_trial, 0)
         exp = ExpClass(args_trial)
         exp.train(setting)
-        metrics = exp.test(setting, save_outputs=False)
-        mse = float(metrics['mse'])
+        exp.test(setting)
+
+        metrics_path = os.path.join(base_args.project_root, 'results', setting, 'metrics.csv')
+        if not os.path.exists(metrics_path):
+            raise FileNotFoundError(f'Expected metrics file missing: {metrics_path}')
+
+        import pandas as pd
+        metrics_df = pd.read_csv(metrics_path)
+        if metrics_df.empty or 'mse' not in metrics_df.columns:
+            raise ValueError(f'Expected mse column in metrics file: {metrics_path}')
+        mse = float(metrics_df.iloc[0]['mse'])
         trial.set_user_attr('setting', setting)
         trial.set_user_attr('sampled', sampled)
         print(f"[BayesOpt][Trial {trial.number}] setting={setting} mse={mse:.6f} params={sampled}")

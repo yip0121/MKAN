@@ -57,7 +57,7 @@ scripts\Battery\soh_20_1.bat
 - After testing, results now also include:
   - `results/<setting>/prediction_vs_truth.png` (overall prediction curve visualization)
   - `results/<setting>/prediction_vs_truth.csv` (true/pred pairs)
-  - `r2` printed in console and saved into `metrics.npy`.
+  - `r2` printed in console and saved into `metrics.csv`.
 - Troubleshooting: if you see `argparse.ArgumentError: ... conflicting option string: --task_name`, you are likely running an older duplicated `run.py`; update/sync `TimeKAN-main/run.py` and ensure PyCharm uses this file as Script path.
 
 
@@ -74,7 +74,7 @@ scripts\Battery\soh_20_1.bat
 - Quantile regression mode (Pinball Loss):
   - Configure quantiles with `--quantiles` (default: `0.95,0.5,0.05`).
   - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
-  - Saved artifacts include `pred_quantiles.npy`, and CSV columns for lower/median/upper bounds (90% interval by default).
+  - Saved artifacts include `pred_quantiles.csv`, and CSV columns for lower/median/upper bounds (90% interval by default).
   - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
 - Temporal module update:
   - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
@@ -95,8 +95,10 @@ Current optimized parameter ranges are defined in `optimize/bayes_opt.py` (`SEAR
 - `e_layers`: [1, 4]
 - `d_ff`: {16, 32, 64, 128}
 - `dropout`: [0.0, 0.3]
+- `begin_order`: [1, 4]
+- `down_sampling_layers`: [0, 2]
 
-Optimization objective is validation/test pipeline MSE from each trial's saved `metrics.npy` (index 1).
+Optimization objective is validation/test pipeline MSE from each trial's saved `metrics.csv` (`mse` column).
 
 ### Train/Val/Test split arguments
 - You can control split ratios directly in `run.py` arguments:
