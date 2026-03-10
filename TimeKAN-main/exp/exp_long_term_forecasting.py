@@ -248,7 +248,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         return np.array(preds_q), np.array(trues)
 
-    def test(self, setting, test=0):
+    def test(self, setting, test=0, save_outputs=True):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -268,51 +268,63 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         print('test shape:', preds_q.shape, trues.shape)
 
-        result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
-        if not os.path.exists(result_folder):
-            os.makedirs(result_folder)
-
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         r2 = R2(preds, trues)
         print(f'mse:{mse}, mae:{mae}')
         print(f'rmse:{rmse}, mape:{mape}, mspe:{mspe}, r2:{r2}')
 
-        with open(os.path.join(self.args.project_root, 'result_long_term_forecast.txt'), 'a') as f:
-            f.write(setting + '  \n')
-            f.write(f'mse:{mse}, mae:{mae}, r2:{r2}')
-            f.write('\n\n')
+        metrics = {
+            'mae': float(mae),
+            'mse': float(mse),
+            'rmse': float(rmse),
+            'mape': float(mape),
+            'mspe': float(mspe),
+            'r2': float(r2),
+        }
 
-        np.save(result_folder + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe, r2]))
-        np.save(result_folder + 'pred.npy', preds)
-        np.save(result_folder + 'pred_quantiles.npy', preds_q)
-        np.save(result_folder + 'true.npy', trues)
+        if save_outputs:
+            result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
+            if not os.path.exists(result_folder):
+                os.makedirs(result_folder)
 
-        true_series = trues[:, :, -1].reshape(-1)
-        pred_series = preds[:, :, -1].reshape(-1)
-        lower_series = pred_lower[:, :, -1].reshape(-1)
-        upper_series = pred_upper[:, :, -1].reshape(-1)
+            with open(os.path.join(self.args.project_root, 'result_long_term_forecast.txt'), 'a') as f:
+                f.write(setting + '  \n')
+                f.write(f'mse:{mse}, mae:{mae}, r2:{r2}')
+                f.write('\n\n')
 
-        visual_with_interval(
-            true_series,
-            pred_series,
-            lower_series,
-            upper_series,
-            os.path.join(result_folder, 'prediction_vs_truth_with_interval.png')
-        )
-        visual(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.png'))
+            np.save(result_folder + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe, r2]))
+            np.save(result_folder + 'pred.npy', preds)
+            np.save(result_folder + 'pred_quantiles.npy', preds_q)
+            np.save(result_folder + 'true.npy', trues)
 
-        import pandas as pd
-        pd.DataFrame(
-            {
-                'true': true_series,
-                'pred_median_q0.50': pred_series,
-                f'pred_lower_q{self.quantiles[self.q_lower_idx]:.2f}': lower_series,
-                f'pred_upper_q{self.quantiles[self.q_upper_idx]:.2f}': upper_series,
-            }
-        ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
+            true_series = trues[:, :, -1].reshape(-1)
+            pred_series = preds[:, :, -1].reshape(-1)
+            lower_series = pred_lower[:, :, -1].reshape(-1)
+            upper_series = pred_upper[:, :, -1].reshape(-1)
 
-        print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
-        print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
-        print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
-        print('Saved metrics to:', os.path.join(result_folder, 'metrics.npy'))
-        print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.npy'))
+            visual_with_interval(
+                true_series,
+                pred_series,
+                lower_series,
+                upper_series,
+                os.path.join(result_folder, 'prediction_vs_truth_with_interval.png')
+            )
+            visual(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.png'))
+
+            import pandas as pd
+            pd.DataFrame(
+                {
+                    'true': true_series,
+                    'pred_median_q0.50': pred_series,
+                    f'pred_lower_q{self.quantiles[self.q_lower_idx]:.2f}': lower_series,
+                    f'pred_upper_q{self.quantiles[self.q_upper_idx]:.2f}': upper_series,
+                }
+            ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
+
+            print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
+            print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
+            print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
+            print('Saved metrics to:', os.path.join(result_folder, 'metrics.npy'))
+            print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.npy'))
+
+        return metrics
