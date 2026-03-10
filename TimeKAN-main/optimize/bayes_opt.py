@@ -12,8 +12,6 @@ SEARCH_SPACE = {
     'e_layers': ('int', 1, 4),
     'd_ff': ('categorical', [16, 32, 64, 128]),
     'dropout': ('float', 0.0, 0.3),
-    'begin_order': ('int', 1, 4),
-    'down_sampling_layers': ('int', 0, 2),
 }
 
 
