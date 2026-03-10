@@ -153,18 +153,20 @@ def build_setting_name(args, ii):
 
 
 def print_result_summary(args, setting, header='Result Summary'):
-    metrics_path = os.path.join(args.project_root, 'results', setting, 'metrics.npy')
+    metrics_path = os.path.join(args.project_root, 'results', setting, 'metrics.csv')
     fig_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth_with_interval.png')
     csv_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth.csv')
 
     print(f'[{header}] setting: {setting}')
     if os.path.exists(metrics_path):
-        metrics = np.load(metrics_path)
-        if len(metrics) >= 6:
-            mae, mse, rmse, mape, mspe, r2 = metrics[:6]
-            print(f'[{header}] mae={mae:.6f}, mse={mse:.6f}, rmse={rmse:.6f}, mape={mape:.6f}, mspe={mspe:.6f}, r2={r2:.6f}')
+        import pandas as pd
+        metrics_df = pd.read_csv(metrics_path)
+        required_cols = ['mae', 'mse', 'rmse', 'mape', 'mspe', 'r2']
+        if not metrics_df.empty and all(col in metrics_df.columns for col in required_cols):
+            row = metrics_df.iloc[0]
+            print(f'[{header}] mae={row["mae"]:.6f}, mse={row["mse"]:.6f}, rmse={row["rmse"]:.6f}, mape={row["mape"]:.6f}, mspe={row["mspe"]:.6f}, r2={row["r2"]:.6f}')
         else:
-            print(f'[{header}] metrics.npy exists but format unexpected: {metrics}')
+            print(f'[{header}] metrics.csv exists but format unexpected: columns={list(metrics_df.columns)}')
     else:
         print(f'[{header}] metrics not found: {metrics_path}')
 
