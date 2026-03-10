@@ -98,7 +98,7 @@ Current optimized parameter ranges are defined in `optimize/bayes_opt.py` (`SEAR
 - `begin_order`: [1, 4]
 - `down_sampling_layers`: [0, 2]
 
-Optimization objective is validation/test pipeline MSE from each trial's saved `metrics.csv` (`mse` column).
+Optimization objective is validation/test pipeline MSE computed during each trial without saving trial result artifacts to `results/`.
 
 - If `--bayes_refit` is enabled, the final run (`*_bayes_best*`) is retrained and re-evaluated, so its metrics can differ from the best trial metrics in `bayes_opt_best.json`.
 

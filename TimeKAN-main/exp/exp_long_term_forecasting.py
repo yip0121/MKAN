@@ -255,7 +255,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         flat = array.reshape(array.shape[0], -1)
         pd.DataFrame(flat).to_csv(path, index=False)
 
-    def test(self, setting, test=0):
+    def test(self, setting, test=0, save_outputs=True):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -275,23 +275,33 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         print('test shape:', preds_q.shape, trues.shape)
 
-        result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
-        if not os.path.exists(result_folder):
-            os.makedirs(result_folder)
-
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         r2 = R2(preds, trues)
         print(f'mse:{mse}, mae:{mae}')
         print(f'rmse:{rmse}, mape:{mape}, mspe:{mspe}, r2:{r2}')
+
+        metrics_payload = {
+            'mae': float(mae),
+            'mse': float(mse),
+            'rmse': float(rmse),
+            'mape': float(mape),
+            'mspe': float(mspe),
+            'r2': float(r2),
+        }
+
+        if not save_outputs:
+            return metrics_payload
+
+        result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
+        if not os.path.exists(result_folder):
+            os.makedirs(result_folder)
 
         with open(os.path.join(self.args.project_root, 'result_long_term_forecast.txt'), 'a') as f:
             f.write(setting + '  \n')
             f.write(f'mse:{mse}, mae:{mae}, r2:{r2}')
             f.write('\n\n')
 
-        pd.DataFrame(
-            [{'mae': mae, 'mse': mse, 'rmse': rmse, 'mape': mape, 'mspe': mspe, 'r2': r2}]
-        ).to_csv(os.path.join(result_folder, 'metrics.csv'), index=False)
+        pd.DataFrame([metrics_payload]).to_csv(os.path.join(result_folder, 'metrics.csv'), index=False)
         self._save_array_csv(preds, os.path.join(result_folder, 'pred.csv'))
         self._save_array_csv(preds_q, os.path.join(result_folder, 'pred_quantiles.csv'))
         self._save_array_csv(trues, os.path.join(result_folder, 'true.csv'))
@@ -324,3 +334,4 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
+        return metrics_payload
