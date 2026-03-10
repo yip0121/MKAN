@@ -2,7 +2,6 @@ import copy
 import json
 import os
 
-import numpy as np
 
 
 # Reasonable high-impact search space for current SOH workflow.
@@ -34,7 +33,7 @@ def _suggest(trial, name, spec):
 def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     """Run Optuna (TPE) Bayesian optimization and return updated args.
 
-    Objective: minimize MSE from saved metrics.npy after each trial.
+    Objective: minimize MSE returned by exp.test metrics for each trial.
     """
     try:
         import optuna
@@ -64,14 +63,8 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         setting = build_setting_name_fn(args_trial, 0)
         exp = ExpClass(args_trial)
         exp.train(setting)
-        exp.test(setting)
-
-        metrics_path = os.path.join(base_args.project_root, 'results', setting, 'metrics.npy')
-        if not os.path.exists(metrics_path):
-            raise FileNotFoundError(f'Expected metrics file missing: {metrics_path}')
-
-        metrics = np.load(metrics_path)
-        mse = float(metrics[1])
+        metrics = exp.test(setting, save_outputs=False)
+        mse = float(metrics['mse'])
         trial.set_user_attr('setting', setting)
         trial.set_user_attr('sampled', sampled)
         print(f"[BayesOpt][Trial {trial.number}] setting={setting} mse={mse:.6f} params={sampled}")
