@@ -33,7 +33,7 @@ def _suggest(trial, name, spec):
 def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     """Run Optuna (TPE) Bayesian optimization and return updated args.
 
-    Objective: minimize MSE from saved metrics.csv after each trial.
+    Objective: minimize MSE from trial evaluation without saving trial artifacts.
     """
     try:
         import optuna
@@ -63,17 +63,10 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         setting = build_setting_name_fn(args_trial, 0)
         exp = ExpClass(args_trial)
         exp.train(setting)
-        exp.test(setting)
-
-        metrics_path = os.path.join(base_args.project_root, 'results', setting, 'metrics.csv')
-        if not os.path.exists(metrics_path):
-            raise FileNotFoundError(f'Expected metrics file missing: {metrics_path}')
-
-        import pandas as pd
-        metrics_df = pd.read_csv(metrics_path)
-        if metrics_df.empty or 'mse' not in metrics_df.columns:
-            raise ValueError(f'Expected mse column in metrics file: {metrics_path}')
-        mse = float(metrics_df.iloc[0]['mse'])
+        metrics = exp.test(setting, save_outputs=False)
+        if not isinstance(metrics, dict) or 'mse' not in metrics:
+            raise ValueError(f'Expected mse in trial metrics for setting: {setting}')
+        mse = float(metrics['mse'])
         trial.set_user_attr('setting', setting)
         trial.set_user_attr('sampled', sampled)
         print(f"[BayesOpt][Trial {trial.number}] setting={setting} mse={mse:.6f} params={sampled}")
