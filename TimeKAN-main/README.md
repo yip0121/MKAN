@@ -95,8 +95,6 @@ Current optimized parameter ranges are defined in `optimize/bayes_opt.py` (`SEAR
 - `e_layers`: [1, 4]
 - `d_ff`: {16, 32, 64, 128}
 - `dropout`: [0.0, 0.3]
-- `begin_order`: [1, 4]
-- `down_sampling_layers`: [0, 2]
 
 Optimization objective is validation/test pipeline MSE from each trial's saved `metrics.npy` (index 1).
 
