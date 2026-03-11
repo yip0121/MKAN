@@ -97,6 +97,21 @@ def visual(true, preds=None, name='./pic/test.pdf'):
         plt.plot(preds, label='Prediction', linewidth=2)
     plt.legend()
     plt.savefig(name, bbox_inches='tight')
+    plt.close()
+
+
+def visual_with_interval(true, preds, lower, upper, name='./pic/test_interval.png'):
+    """
+    Visualization with confidence interval.
+    """
+    x = np.arange(len(true))
+    plt.figure()
+    plt.plot(x, true, label='GroundTruth', linewidth=2)
+    plt.plot(x, preds, label='Prediction (median)', linewidth=2)
+    plt.fill_between(x, lower, upper, alpha=0.2, label='Confidence Interval')
+    plt.legend()
+    plt.savefig(name, bbox_inches='tight')
+    plt.close()
 
 
 def visual_weights(weights, name='./pic/test.pdf'):
