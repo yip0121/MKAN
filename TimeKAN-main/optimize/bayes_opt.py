@@ -2,6 +2,7 @@ import copy
 import json
 import os
 
+from utils.metrics import metric
 
 
 # Reasonable high-impact search space for current SOH workflow.
@@ -39,7 +40,7 @@ def _suggest(trial, name, spec):
 def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     """Run Optuna (TPE) Bayesian optimization and return updated args.
 
-    Objective: minimize MSE from trial evaluation without saving trial artifacts.
+    Objective: minimize validation-set MSE for each trial without using test set.
     """
     try:
         import optuna
@@ -69,13 +70,21 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         setting = build_setting_name_fn(args_trial, 0)
         exp = ExpClass(args_trial)
         exp.train(setting)
-        metrics = exp.test(setting, save_outputs=False)
-        if not isinstance(metrics, dict) or 'mse' not in metrics:
-            raise ValueError(f'Expected mse in trial metrics for setting: {setting}')
-        mse = float(metrics['mse'])
+
+        val_data, val_loader = exp._get_data(flag='val')
+        exp.model.eval()
+        if args_trial.pred_len == 1:
+            preds_q, trues = exp._test_single_step_loader(val_loader)
+        else:
+            preds_q, trues = exp._test_multi_step_autoregressive(val_data)
+
+        preds = preds_q[:, :, exp.q_median_idx:exp.q_median_idx + 1]
+        _, mse, _, _, _ = metric(preds, trues)
+        mse = float(mse)
+
         trial.set_user_attr('setting', setting)
         trial.set_user_attr('sampled', sampled)
-        print(f"[BayesOpt][Trial {trial.number}] setting={setting} mse={mse:.6f} params={sampled}")
+        print(f"[BayesOpt][Trial {trial.number}] setting={setting} val_mse={mse:.6f} params={sampled}")
         return mse
 
     sampler = optuna.samplers.TPESampler(seed=2021)
@@ -92,6 +101,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     best_path = os.path.join(base_args.project_root, 'results', build_bayes_best_filename(base_args))
 
     best_payload = {
+        'objective_split': 'val',
         'best_value': study.best_value,
         'best_params': study.best_params,
         'best_setting': study.best_trial.user_attrs.get('setting', ''),
