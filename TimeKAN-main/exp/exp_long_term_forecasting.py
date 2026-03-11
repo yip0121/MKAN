@@ -101,7 +101,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def train(self, setting):
         _, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
 
         path = os.path.join(self.args.project_root, self.args.checkpoints.lstrip('./').rstrip('/'), setting)
         if not os.path.exists(path):
@@ -166,11 +165,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print(f"Epoch: {epoch + 1} cost time: {time.time() - epoch_time}")
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
 
             print(
-                "Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                    epoch + 1, train_steps, train_loss, vali_loss, test_loss
+                "Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(
+                    epoch + 1, train_steps, train_loss, vali_loss
                 )
             )
             early_stopping(vali_loss, self.model, path)

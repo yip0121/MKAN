@@ -249,8 +249,8 @@ def main():
         print(args)
         if not args.bayes_refit:
             print('[BayesOpt] bayes_refit is False; skipping final retraining.')
-            if best_info.get('best_setting', ''):
-                print_result_summary(args, best_info['best_setting'], header='BayesOpt Best Trial')
+            print('[BayesOpt] Best trial is selected by validation MSE only; test set is untouched in Bayesian search.')
+            print(f"[BayesOpt] Best validation MSE: {best_info.get('best_value', 'N/A')}")
             return
         print('[BayesOpt] bayes_refit is True; final training metrics can differ from best trial metrics due to more epochs/retraining.')
 
