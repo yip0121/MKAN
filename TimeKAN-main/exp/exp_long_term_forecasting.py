@@ -261,10 +261,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         self.model.eval()
         if self.args.pred_len == 1:
-            print('[Test] Single-step rolling autoregressive mode active (pred_len=1, stride=1).')
+            print('[Test] Single-step mode active (pred_len=1).')
+            preds_q, trues = self._test_single_step_loader(test_loader)
         else:
-            print(f'[Test] Multi-step rolling autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
-        preds_q, trues = self._test_multi_step_autoregressive(test_data)
+            print(f'[Test] Multi-step autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
+            preds_q, trues = self._test_multi_step_autoregressive(test_data)
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
