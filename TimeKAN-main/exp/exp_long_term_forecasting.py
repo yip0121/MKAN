@@ -205,9 +205,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
         return preds_q, trues
 
-    def _test_multi_step_autoregressive(self, test_data):
+    def _test_multi_step_direct(self, test_data):
         source_series = test_data.data_x.astype(np.float32).copy()
-        rolling_series = source_series.copy()
 
         seq_len = self.args.seq_len
         pred_len = self.args.pred_len
@@ -219,7 +218,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         start = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
-                x_window = rolling_series[start:start + seq_len]
+                x_window = source_series[start:start + seq_len]
                 y_true = source_series[start + seq_len:start + seq_len + pred_len]
 
                 batch_x = torch.from_numpy(x_window).unsqueeze(0).float().to(self.device)
@@ -237,14 +236,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 preds_q.append(pred_q)
                 trues.append(y_true)
 
-                # Feed back median prediction only
-                pred_median = pred_q[:, self.q_median_idx:self.q_median_idx + 1]
-                rolling_series[start + seq_len:start + seq_len + pred_len] = pred_median
-
                 start += pred_len
 
         if len(preds_q) == 0:
-            raise ValueError('Not enough test samples for the current seq_len/pred_len in multi-step mode.')
+            raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
         return np.array(preds_q), np.array(trues)
 
@@ -261,11 +256,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         self.model.eval()
         if self.args.pred_len == 1:
-            print('[Test] Single-step mode active (pred_len=1).')
+            print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
             preds_q, trues = self._test_single_step_loader(test_loader)
         else:
-            print(f'[Test] Multi-step autoregressive mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}).')
-            preds_q, trues = self._test_multi_step_autoregressive(test_data)
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
+            preds_q, trues = self._test_multi_step_direct(test_data)
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
