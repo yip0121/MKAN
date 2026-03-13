@@ -35,6 +35,21 @@ class PinballLoss(nn.Module):
         return loss.mean()
 
 
+class PinballLoss(nn.Module):
+    def __init__(self, quantiles):
+        super().__init__()
+        q = torch.tensor(quantiles, dtype=torch.float32)
+        self.register_buffer('quantiles', q)
+
+    def forward(self, pred, target):
+        # pred: [B, T, Q], target: [B, T, 1]
+        target = target.expand_as(pred)
+        errors = target - pred
+        q = self.quantiles.view(1, 1, -1)
+        loss = torch.maximum(q * errors, (q - 1) * errors)
+        return loss.mean()
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
