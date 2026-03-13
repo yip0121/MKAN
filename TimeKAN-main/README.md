@@ -81,6 +81,12 @@ scripts\Battery\soh_20_1.bat
 - Temporal module update:
   - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
 
+- Frequency-band front-end update:
+  - Original CFD-like decomposition is replaced by multi-level per-channel Haar DWT with single-band reconstruction.
+  - Each reconstructed band is length-aligned to the original sequence before entering KAN branches.
+  - Band fusion is performed by summing all band branch outputs, then applying the same prediction head.
+  - `down_sampling_layers` now acts as DWT decomposition level (number of wavelet levels).
+
 
 ### Bayesian hyper-parameter optimization (optional)
 Enable Bayesian optimization (Optuna/TPE) from `run.py`:
