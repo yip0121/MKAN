@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import pywt
-import numpy as np
+import torch.nn.functional as F
 
 from layers.Autoformer_EncDec import series_decomp
 from layers.ChebyKANLayer import ChebyKANLinear
@@ -120,7 +119,10 @@ class FrequencyMixing(nn.Module):
 
 
 class DWTFrontEnd(nn.Module):
-    """Multi-level per-channel DWT with single-band reconstruction to original length."""
+    """Multi-level per-channel DWT (db4) with single-band reconstruction to original length.
+
+    Implemented fully in torch to avoid CPU/Numpy/PyWavelets overhead in forward path.
+    """
 
     def __init__(self, levels: int, wavelet: str = 'db4', mode: str = 'symmetric'):
         super().__init__()
@@ -128,44 +130,89 @@ class DWTFrontEnd(nn.Module):
         self.wavelet = wavelet
         self.mode = mode
 
+        if self.wavelet != 'db4':
+            raise ValueError(f"Only db4 is supported in torch DWT frontend, got: {self.wavelet}")
+
+        # db4 analysis/synthesis filters
+        dec_lo = [-0.0105974018, 0.0328830117, 0.0308413818, -0.1870348117,
+                  -0.0279837694, 0.6308807679, 0.7148465706, 0.2303778133]
+        dec_hi = [-0.2303778133, 0.7148465706, -0.6308807679, -0.0279837694,
+                  0.1870348117, 0.0308413818, -0.0328830117, -0.0105974018]
+        rec_lo = [0.2303778133, 0.7148465706, 0.6308807679, -0.0279837694,
+                  -0.1870348117, 0.0308413818, 0.0328830117, -0.0105974018]
+        rec_hi = [-0.0105974018, -0.0328830117, 0.0308413818, 0.1870348117,
+                  -0.0279837694, -0.6308807679, 0.7148465706, -0.2303778133]
+
+        self.register_buffer('dec_lo', torch.tensor(dec_lo, dtype=torch.float32).view(1, 1, -1))
+        self.register_buffer('dec_hi', torch.tensor(dec_hi, dtype=torch.float32).view(1, 1, -1))
+        self.register_buffer('rec_lo', torch.tensor(rec_lo, dtype=torch.float32).view(1, 1, -1))
+        self.register_buffer('rec_hi', torch.tensor(rec_hi, dtype=torch.float32).view(1, 1, -1))
+        self.filter_len = len(dec_lo)
+
+    def _pad(self, x):
+        if self.mode == 'symmetric':
+            return F.pad(x, (self.filter_len - 1, self.filter_len - 1), mode='reflect')
+        return F.pad(x, (self.filter_len - 1, self.filter_len - 1), mode='replicate')
+
+    def _dwt_step(self, x):
+        # x: [B, C, T]
+        bsz, channels, _ = x.shape
+        x_pad = self._pad(x)
+        w_lo = self.dec_lo.repeat(channels, 1, 1).to(x.dtype)
+        w_hi = self.dec_hi.repeat(channels, 1, 1).to(x.dtype)
+        low = F.conv1d(x_pad, w_lo, stride=2, groups=channels)
+        high = F.conv1d(x_pad, w_hi, stride=2, groups=channels)
+        return low, high
+
+    def _idwt_step(self, low, high, target_len):
+        bsz, channels, _ = low.shape
+        w_lo = self.rec_lo.repeat(channels, 1, 1).to(low.dtype)
+        w_hi = self.rec_hi.repeat(channels, 1, 1).to(low.dtype)
+        up_lo = F.conv_transpose1d(low, w_lo, stride=2, groups=channels)
+        up_hi = F.conv_transpose1d(high, w_hi, stride=2, groups=channels)
+        out = up_lo + up_hi
+        # Center crop to target length (inverse of padding expansion).
+        if out.size(-1) > target_len:
+            start = (out.size(-1) - target_len) // 2
+            out = out[..., start:start + target_len]
+        elif out.size(-1) < target_len:
+            out = F.pad(out, (0, target_len - out.size(-1)))
+        return out
+
     def forward(self, x):
         # x: [B, C, T]
         if self.levels <= 0:
             return [x]
 
-        bsz, channels, seq_len = x.shape
-        x_np = x.detach().cpu().numpy().astype(np.float32)
-        bands_np = [[] for _ in range(self.levels + 1)]
+        approx = x
+        details = []
+        target_lens = []
 
-        for b in range(bsz):
-            for c in range(channels):
-                sig = x_np[b, c]
-                max_level = pywt.dwt_max_level(data_len=len(sig), filter_len=pywt.Wavelet(self.wavelet).dec_len)
-                level = min(self.levels, max_level) if max_level > 0 else 0
-                if level <= 0:
-                    coeffs = [sig]
-                    rec_bands = [sig]
-                else:
-                    coeffs = pywt.wavedec(sig, wavelet=self.wavelet, mode=self.mode, level=level)
-                    # coeffs: [cA_n, cD_n, cD_{n-1}, ..., cD_1]
-                    rec_bands = []
-                    for i in range(len(coeffs)):
-                        c_keep = [np.zeros_like(v) for v in coeffs]
-                        c_keep[i] = coeffs[i]
-                        rec = pywt.waverec(c_keep, wavelet=self.wavelet, mode=self.mode)
-                        rec_bands.append(rec[:seq_len])
-                    # pad to configured band count when effective level < self.levels
-                    while len(rec_bands) < self.levels + 1:
-                        rec_bands.append(np.zeros(seq_len, dtype=np.float32))
+        for _ in range(self.levels):
+            target_lens.append(approx.size(-1))
+            approx, detail = self._dwt_step(approx)
+            details.append(detail)
 
-                for i in range(self.levels + 1):
-                    bands_np[i].append(rec_bands[i][:seq_len])
+        def reconstruct_single_band(band_idx):
+            # band_idx=0 -> deepest approximation
+            # band_idx=1..levels -> detail bands from coarse to fine
+            if band_idx == 0:
+                rec = approx
+                for lvl in reversed(range(self.levels)):
+                    rec = self._idwt_step(rec, torch.zeros_like(details[lvl]), target_lens[lvl])
+                return rec
 
-        out = []
-        for i in range(self.levels + 1):
-            arr = np.array(bands_np[i], dtype=np.float32).reshape(bsz, channels, seq_len)
-            out.append(torch.from_numpy(arr).to(x.device, dtype=x.dtype))
-        return out
+            detail_pick = self.levels - band_idx
+            rec = torch.zeros_like(approx)
+            for lvl in reversed(range(self.levels)):
+                d = details[lvl] if lvl == detail_pick else torch.zeros_like(details[lvl])
+                rec = self._idwt_step(rec, d, target_lens[lvl])
+            return rec
+
+        bands = [reconstruct_single_band(i) for i in range(self.levels + 1)]
+        # Ensure strict same length as original
+        bands = [b[..., :x.size(-1)] if b.size(-1) >= x.size(-1) else F.pad(b, (0, x.size(-1) - b.size(-1))) for b in bands]
+        return bands
 
 
 class DilatedTCNBlock(nn.Module):

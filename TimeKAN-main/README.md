@@ -76,7 +76,7 @@ scripts\Battery\soh_20_1.bat
   - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
   - Saved artifacts include `pred_quantiles.csv`, and CSV columns for lower/median/upper bounds (90% interval by default).
   - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
-  - DWT band visualization (single figure): `dwt_bands_overview.png`.
+  - DWT band visualization (single figure): `dwt_bands_overview.png` (saved on final test run by default to reduce training overhead).
   - `pred_len=1`: single-step sliding-window evaluation (stride=1).
   - `pred_len>1`: multi-step direct evaluation (window stride equals `pred_len`), and each next window uses true history from dataset (no prediction feedback).
 - Temporal module update:
