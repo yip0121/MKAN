@@ -76,6 +76,7 @@ scripts\Battery\soh_20_1.bat
   - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
   - Saved artifacts include `pred_quantiles.csv`, and CSV columns for lower/median/upper bounds (90% interval by default).
   - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
+  - DWT band visualization (single figure): `dwt_bands_overview.png`.
   - `pred_len=1`: single-step sliding-window evaluation (stride=1).
   - `pred_len>1`: multi-step direct evaluation (window stride equals `pred_len`), and each next window uses true history from dataset (no prediction feedback).
 - Temporal module update:
@@ -87,6 +88,11 @@ scripts\Battery\soh_20_1.bat
   - Band fusion is performed by summing all band branch outputs, then applying the same prediction head.
   - `down_sampling_layers` now acts as DWT decomposition level (number of wavelet levels).
 
+
+- Recommended DWT params:
+  - `wavelet`: `db4`
+  - `wavelet_mode`: `symmetric`
+  - `dwt_level`: `3`
 
 ### Bayesian hyper-parameter optimization (optional)
 Enable Bayesian optimization (Optuna/TPE) from `run.py`:

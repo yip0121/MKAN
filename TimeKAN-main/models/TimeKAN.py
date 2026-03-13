@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import pywt
+import numpy as np
 
 from layers.Autoformer_EncDec import series_decomp
 from layers.ChebyKANLayer import ChebyKANLinear
@@ -117,68 +119,54 @@ class FrequencyMixing(nn.Module):
 
 
 
-class HaarDWTFrontEnd(nn.Module):
-    """Multi-level per-channel Haar DWT with single-band reconstruction to original length."""
+class DWTFrontEnd(nn.Module):
+    """Multi-level per-channel DWT with single-band reconstruction to original length."""
 
-    def __init__(self, levels: int):
+    def __init__(self, levels: int, wavelet: str = 'db4', mode: str = 'symmetric'):
         super().__init__()
         self.levels = max(0, int(levels))
-        self.sqrt2 = 2 ** 0.5
-
-    def _dwt_step(self, x):
-        # x: [B, C, T]
-        orig_len = x.size(-1)
-        if orig_len % 2 == 1:
-            x = torch.cat([x, x[..., -1:]], dim=-1)
-        even = x[..., 0::2]
-        odd = x[..., 1::2]
-        approx = (even + odd) / self.sqrt2
-        detail = (even - odd) / self.sqrt2
-        return approx, detail, orig_len
-
-    def _idwt_step(self, approx, detail, target_len):
-        # approx/detail: [B, C, T/2]
-        even = (approx + detail) / self.sqrt2
-        odd = (approx - detail) / self.sqrt2
-        out = torch.stack([even, odd], dim=-1).reshape(approx.size(0), approx.size(1), -1)
-        return out[..., :target_len]
-
-    def _decompose(self, x):
-        details = []
-        lengths = []
-        approx = x
-        for _ in range(self.levels):
-            approx, detail, orig_len = self._dwt_step(approx)
-            details.append(detail)
-            lengths.append(orig_len)
-        return approx, details, lengths
-
-    def _reconstruct_single_band(self, approx, details, lengths, band_idx):
-        # band_idx=0 -> low band (approx at deepest level)
-        # band_idx=i (1..levels) -> detail band at level i (coarse-to-fine mapped by reverse index)
-        if band_idx == 0:
-            rec = approx
-            for lvl in reversed(range(self.levels)):
-                zero_d = torch.zeros_like(details[lvl])
-                rec = self._idwt_step(rec, zero_d, lengths[lvl])
-            return rec
-
-        detail_pick = self.levels - band_idx
-        rec = torch.zeros_like(approx)
-        for lvl in reversed(range(self.levels)):
-            d = details[lvl] if lvl == detail_pick else torch.zeros_like(details[lvl])
-            rec = self._idwt_step(rec, d, lengths[lvl])
-        return rec
+        self.wavelet = wavelet
+        self.mode = mode
 
     def forward(self, x):
         # x: [B, C, T]
         if self.levels <= 0:
             return [x]
-        approx, details, lengths = self._decompose(x)
-        bands = [self._reconstruct_single_band(approx, details, lengths, 0)]
-        for i in range(1, self.levels + 1):
-            bands.append(self._reconstruct_single_band(approx, details, lengths, i))
-        return bands
+
+        bsz, channels, seq_len = x.shape
+        x_np = x.detach().cpu().numpy().astype(np.float32)
+        bands_np = [[] for _ in range(self.levels + 1)]
+
+        for b in range(bsz):
+            for c in range(channels):
+                sig = x_np[b, c]
+                max_level = pywt.dwt_max_level(data_len=len(sig), filter_len=pywt.Wavelet(self.wavelet).dec_len)
+                level = min(self.levels, max_level) if max_level > 0 else 0
+                if level <= 0:
+                    coeffs = [sig]
+                    rec_bands = [sig]
+                else:
+                    coeffs = pywt.wavedec(sig, wavelet=self.wavelet, mode=self.mode, level=level)
+                    # coeffs: [cA_n, cD_n, cD_{n-1}, ..., cD_1]
+                    rec_bands = []
+                    for i in range(len(coeffs)):
+                        c_keep = [np.zeros_like(v) for v in coeffs]
+                        c_keep[i] = coeffs[i]
+                        rec = pywt.waverec(c_keep, wavelet=self.wavelet, mode=self.mode)
+                        rec_bands.append(rec[:seq_len])
+                    # pad to configured band count when effective level < self.levels
+                    while len(rec_bands) < self.levels + 1:
+                        rec_bands.append(np.zeros(seq_len, dtype=np.float32))
+
+                for i in range(self.levels + 1):
+                    bands_np[i].append(rec_bands[i][:seq_len])
+
+        out = []
+        for i in range(self.levels + 1):
+            arr = np.array(bands_np[i], dtype=np.float32).reshape(bsz, channels, seq_len)
+            out.append(torch.from_numpy(arr).to(x.device, dtype=x.dtype))
+        return out
+
 
 class DilatedTCNBlock(nn.Module):
     """TCN-style dilated convolution block (same-length, residual)."""
@@ -230,9 +218,11 @@ class Model(nn.Module):
         self.enc_in = configs.enc_in
         self.use_future_temporal_feature = configs.use_future_temporal_feature
 
-        self.wavelet_levels = max(0, int(configs.down_sampling_layers))
+        self.wavelet_levels = max(0, int(getattr(configs, "dwt_level", configs.down_sampling_layers)))
         self.num_bands = self.wavelet_levels + 1
-        self.dwt_frontend = HaarDWTFrontEnd(self.wavelet_levels)
+        self.wavelet = getattr(configs, "wavelet", "db4")
+        self.wavelet_mode = getattr(configs, "wavelet_mode", "symmetric")
+        self.dwt_frontend = DWTFrontEnd(self.wavelet_levels, wavelet=self.wavelet, mode=self.wavelet_mode)
 
         self.enc_embedding = DataEmbedding_wo_pos(1, configs.d_model, configs.embed, configs.freq, configs.dropout)
         self.normalize = Normalize(self.configs.enc_in, affine=True, non_norm=True if configs.use_norm == 0 else False)

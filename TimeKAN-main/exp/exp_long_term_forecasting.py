@@ -12,10 +12,27 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.metrics import metric, R2
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, visual_with_interval
 
 warnings.filterwarnings('ignore')
+plt.switch_backend('agg')
+
+
+class PinballLoss(nn.Module):
+    def __init__(self, quantiles):
+        super().__init__()
+        q = torch.tensor(quantiles, dtype=torch.float32)
+        self.register_buffer('quantiles', q)
+
+    def forward(self, pred, target):
+        # pred: [B, T, Q], target: [B, T, 1]
+        target = target.expand_as(pred)
+        errors = target - pred
+        q = self.quantiles.view(1, 1, -1)
+        loss = torch.maximum(q * errors, (q - 1) * errors)
+        return loss.mean()
 
 
 class PinballLoss(nn.Module):
@@ -243,6 +260,41 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         return np.array(preds_q), np.array(trues)
 
+
+    def _save_dwt_decomposition_plot(self, test_data, result_folder):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'dwt_frontend'):
+            return
+
+        series = test_data.data_x.astype(np.float32)
+        if len(series) < self.args.seq_len:
+            return
+
+        x_window = series[:self.args.seq_len]
+        if x_window.ndim == 1:
+            x_window = x_window[:, None]
+
+        x_tensor = torch.from_numpy(x_window).unsqueeze(0).permute(0, 2, 1).to(self.device)
+        with torch.no_grad():
+            bands = model_obj.dwt_frontend(x_tensor)
+
+        orig = x_window[:, 0]
+        bands_np = [b.detach().cpu().numpy()[0, 0, :] for b in bands]
+
+        nrows = len(bands_np) + 1
+        fig, axes = plt.subplots(nrows, 1, figsize=(10, 2.2 * nrows), sharex=True)
+        axes[0].plot(orig, color='black', linewidth=1.5)
+        axes[0].set_title('Original sequence (first channel)')
+
+        for i, band in enumerate(bands_np):
+            name = 'Low band (A)' if i == 0 else f'High band D{i}'
+            axes[i + 1].plot(band, linewidth=1.2)
+            axes[i + 1].set_title(name)
+
+        plt.tight_layout()
+        fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
+        plt.close(fig)
+
     @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
@@ -322,9 +374,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
+        self._save_dwt_decomposition_plot(test_data, result_folder)
+
         print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
         print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
+        print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
         return metrics_payload

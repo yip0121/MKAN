@@ -63,6 +63,9 @@ def build_parser():
     parser.add_argument('--begin_order', type=int, default=1)
     parser.add_argument('--channel_independence', type=int, default=1)
     parser.add_argument('--use_future_temporal_feature', type=int, default=0)
+    parser.add_argument('--wavelet', type=str, default='db4')
+    parser.add_argument('--wavelet_mode', type=str, default='symmetric')
+    parser.add_argument('--dwt_level', type=int, default=3)
 
     # training
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/')
