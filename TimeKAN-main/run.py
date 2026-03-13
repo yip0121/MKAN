@@ -266,7 +266,7 @@ def main():
             exp.train(setting)
 
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+            exp.test(setting, save_dwt_plot=(ii == args.itr - 1))
             print_result_summary(args, setting, header='Final Training Run')
             if args.enable_bayes_opt and args.bayes_refit and ii == 0:
                 update_bayes_json_with_refit(args, setting)
@@ -277,7 +277,7 @@ def main():
 
         exp = Exp(args)
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
+        exp.test(setting, test=1, save_dwt_plot=True)
         print_result_summary(args, setting, header='Test-Only Run')
         torch.cuda.empty_cache()
 

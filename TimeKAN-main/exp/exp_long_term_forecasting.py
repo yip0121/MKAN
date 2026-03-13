@@ -35,21 +35,6 @@ class PinballLoss(nn.Module):
         return loss.mean()
 
 
-class PinballLoss(nn.Module):
-    def __init__(self, quantiles):
-        super().__init__()
-        q = torch.tensor(quantiles, dtype=torch.float32)
-        self.register_buffer('quantiles', q)
-
-    def forward(self, pred, target):
-        # pred: [B, T, Q], target: [B, T, 1]
-        target = target.expand_as(pred)
-        errors = target - pred
-        q = self.quantiles.view(1, 1, -1)
-        loss = torch.maximum(q * errors, (q - 1) * errors)
-        return loss.mean()
-
-
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -300,7 +285,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         flat = array.reshape(array.shape[0], -1)
         pd.DataFrame(flat).to_csv(path, index=False)
 
-    def test(self, setting, test=0, save_outputs=True):
+    def test(self, setting, test=0, save_outputs=True, save_dwt_plot=True):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -374,12 +359,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
-        self._save_dwt_decomposition_plot(test_data, result_folder)
+        if save_dwt_plot:
+            self._save_dwt_decomposition_plot(test_data, result_folder)
 
         print('Saved visualization to:', os.path.join(result_folder, 'prediction_vs_truth.png'))
         print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
-        print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
+        if save_dwt_plot:
+            print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
         return metrics_payload
