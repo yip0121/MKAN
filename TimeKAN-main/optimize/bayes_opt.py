@@ -69,7 +69,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
 
         setting = build_setting_name_fn(args_trial, 0)
         exp = ExpClass(args_trial)
-        exp.train(setting)
+        exp.train(setting, save_checkpoint=False)
 
         val_data, _ = exp._get_data(flag='val')
         exp.model.eval()

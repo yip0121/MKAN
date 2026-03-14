@@ -95,6 +95,7 @@ scripts\Battery\soh_20_1.bat
   - `dwt_level`: `3`
 
 ### Bayesian hyper-parameter optimization (optional)
+- Bayesian optimization trials do not save checkpoint folders; only final best summary (and optional refit run checkpoints) are persisted.
 Enable Bayesian optimization (Optuna/TPE) from `run.py`:
 - `--enable_bayes_opt`
 - `--bayes_trials 15`
