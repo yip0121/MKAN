@@ -100,17 +100,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.train()
         return np.average(total_loss)
 
-    def train(self, setting):
+    def train(self, setting, save_checkpoint=True):
         _, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
 
         path = os.path.join(self.args.project_root, self.args.checkpoints.lstrip('./').rstrip('/'), setting)
-        if not os.path.exists(path):
+        if save_checkpoint and not os.path.exists(path):
             os.makedirs(path)
 
         time_now = time.time()
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True) if save_checkpoint else None
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
@@ -173,18 +173,20 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     epoch + 1, train_steps, train_loss, vali_loss
                 )
             )
-            early_stopping(vali_loss, self.model, path)
-            if early_stopping.early_stop:
-                print('Early stopping')
-                break
+            if save_checkpoint:
+                early_stopping(vali_loss, self.model, path)
+                if early_stopping.early_stop:
+                    print('Early stopping')
+                    break
 
             if self.args.lradj != 'TST':
                 adjust_learning_rate(model_optim, scheduler, epoch + 1, self.args, printout=True)
             else:
                 print(f'Updating learning rate to {scheduler.get_last_lr()[0]}')
 
-        best_model_path = path + '/checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        if save_checkpoint:
+            best_model_path = path + '/checkpoint.pth'
+            self.model.load_state_dict(torch.load(best_model_path))
         return self.model
 
     def _test_single_step_loader(self, test_loader):
