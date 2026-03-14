@@ -130,18 +130,24 @@ class DWTFrontEnd(nn.Module):
         self.wavelet = wavelet
         self.mode = mode
 
-        if self.wavelet != 'db4':
-            raise ValueError(f"Only db4 is supported in torch DWT frontend, got: {self.wavelet}")
-
-        # db4 analysis/synthesis filters
-        dec_lo = [-0.0105974018, 0.0328830117, 0.0308413818, -0.1870348117,
-                  -0.0279837694, 0.6308807679, 0.7148465706, 0.2303778133]
-        dec_hi = [-0.2303778133, 0.7148465706, -0.6308807679, -0.0279837694,
-                  0.1870348117, 0.0308413818, -0.0328830117, -0.0105974018]
-        rec_lo = [0.2303778133, 0.7148465706, 0.6308807679, -0.0279837694,
-                  -0.1870348117, 0.0308413818, 0.0328830117, -0.0105974018]
-        rec_hi = [-0.0105974018, -0.0328830117, 0.0308413818, 0.1870348117,
-                  -0.0279837694, -0.6308807679, 0.7148465706, -0.2303778133]
+        if self.wavelet == 'db4':
+            # db4 analysis/synthesis filters
+            dec_lo = [-0.0105974018, 0.0328830117, 0.0308413818, -0.1870348117,
+                      -0.0279837694, 0.6308807679, 0.7148465706, 0.2303778133]
+            dec_hi = [-0.2303778133, 0.7148465706, -0.6308807679, -0.0279837694,
+                      0.1870348117, 0.0308413818, -0.0328830117, -0.0105974018]
+            rec_lo = [0.2303778133, 0.7148465706, 0.6308807679, -0.0279837694,
+                      -0.1870348117, 0.0308413818, 0.0328830117, -0.0105974018]
+            rec_hi = [-0.0105974018, -0.0328830117, 0.0308413818, 0.1870348117,
+                      -0.0279837694, -0.6308807679, 0.7148465706, -0.2303778133]
+        elif self.wavelet == 'haar':
+            inv_sqrt2 = 2 ** -0.5
+            dec_lo = [inv_sqrt2, inv_sqrt2]
+            dec_hi = [-inv_sqrt2, inv_sqrt2]
+            rec_lo = [inv_sqrt2, inv_sqrt2]
+            rec_hi = [inv_sqrt2, -inv_sqrt2]
+        else:
+            raise ValueError(f"Unsupported wavelet in torch DWT frontend: {self.wavelet}. Use 'db4' or 'haar'.")
 
         self.register_buffer('dec_lo', torch.tensor(dec_lo, dtype=torch.float32).view(1, 1, -1))
         self.register_buffer('dec_hi', torch.tensor(dec_hi, dtype=torch.float32).view(1, 1, -1))
