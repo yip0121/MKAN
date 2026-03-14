@@ -90,7 +90,7 @@ scripts\Battery\soh_20_1.bat
 
 
 - Recommended DWT params:
-  - `wavelet`: `db4`
+  - `wavelet`: `db4` (or `haar` for faster runs)
   - `wavelet_mode`: `symmetric`
   - `dwt_level`: `3`
 
