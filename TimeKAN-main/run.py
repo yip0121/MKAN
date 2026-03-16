@@ -29,13 +29,15 @@ def build_parser():
     parser.add_argument('--task_name', type=str, default='long_term_forecast')
     parser.add_argument('--is_training', type=int, default=1)
     parser.add_argument('--model_id', type=str, default='battery_soh')
-    parser.add_argument('--model', type=str, default='TimeKAN')
+    parser.add_argument('--model', type=str, default='TimeKAN', help='model name: TimeKAN | CNNLSTM | iTransformer | TimeMixer')
 
     # battery soh data
     parser.add_argument('--data', type=str, default='battery_soh')
     parser.add_argument('--root_path', type=str, default='./dataset/battery/')
     parser.add_argument('--data_path', type=str, default='battery_36Ah_70W_65W_1551.xlsx')
     parser.add_argument('--target', type=str, default='soh')
+    parser.add_argument('--target_col', type=str, default='', help='target column name in excel; if empty, fallback to target_col_idx or default col-4')
+    parser.add_argument('--target_col_idx', type=int, default=-1, help='target column index (0-based) if target_col is empty')
     parser.add_argument('--features', type=str, default='S')
     parser.add_argument('--train_ratio', type=float, default=0.4, help='train split ratio')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='validation split ratio')
@@ -66,6 +68,14 @@ def build_parser():
     parser.add_argument('--wavelet', type=str, default='db4')
     parser.add_argument('--wavelet_mode', type=str, default='symmetric')
     parser.add_argument('--dwt_level', type=int, default=3)
+
+    # compare-model specific params
+    parser.add_argument('--cnn_channels', type=int, default=32)
+    parser.add_argument('--lstm_hidden', type=int, default=64)
+    parser.add_argument('--lstm_layers', type=int, default=2)
+    parser.add_argument('--itf_layers', type=int, default=2)
+    parser.add_argument('--time_mixer_layers', type=int, default=2)
+    parser.add_argument('--time_mixer_kernel', type=int, default=5)
 
     # training
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/')
@@ -172,11 +182,11 @@ def read_metrics_csv(metrics_path):
 
 def build_bayes_best_path(args):
     train_tag = int(round(float(args.train_ratio) * 100))
-    return os.path.join(args.project_root, 'results', f'bayes_opt_best_train{train_tag}.json')
+    return os.path.join(args.project_root, 'results', args.model, f'bayes_opt_best_{args.model}_train{train_tag}.json')
 
 def update_bayes_json_with_refit(args, refit_setting):
     best_path = build_bayes_best_path(args)
-    refit_metrics_path = os.path.join(args.project_root, 'results', refit_setting, 'metrics.csv')
+    refit_metrics_path = os.path.join(args.project_root, 'results', args.model, refit_setting, 'metrics.csv')
     if not os.path.exists(best_path) or not os.path.exists(refit_metrics_path):
         return
 
@@ -196,9 +206,9 @@ def update_bayes_json_with_refit(args, refit_setting):
     print(f'[BayesOpt] Updated best summary with refit metrics: {best_path}')
 
 def print_result_summary(args, setting, header='Result Summary'):
-    metrics_path = os.path.join(args.project_root, 'results', setting, 'metrics.csv')
-    fig_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth_with_interval.png')
-    csv_path = os.path.join(args.project_root, 'results', setting, 'prediction_vs_truth.csv')
+    metrics_path = os.path.join(args.project_root, 'results', args.model, setting, 'metrics.csv')
+    fig_path = os.path.join(args.project_root, 'results', args.model, setting, 'prediction_vs_truth_with_interval.png')
+    csv_path = os.path.join(args.project_root, 'results', args.model, setting, 'prediction_vs_truth.csv')
 
     print(f'[{header}] setting: {setting}')
     if os.path.exists(metrics_path):

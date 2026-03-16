@@ -153,3 +153,29 @@ If you find this repository useful for your work, please consider citing it as f
   url={https://openreview.net/forum?id=wTLc79YNbh}
 }
 ```
+
+## Compare models (CNNLSTM / iTransformer / TimeMixer)
+
+- 新增模型：`CNNLSTM`、`iTransformer`、`TimeMixer`
+- 与 TimeKAN 共用同一套贝叶斯优化流程（Optuna 引擎），但按模型选择各自搜索空间。
+- 数据读取支持直接指定预测列：
+  - `--target_col <列名>`（优先）
+  - `--target_col_idx <0-based索引>`（备选）
+
+示例（不分解，直接按列预测）：
+```bash
+python run.py --model CNNLSTM --data battery_soh --root_path ./dataset/battery/ --data_path battery_36Ah_70W_65W_1551.xlsx --target_col_idx 3 --enable_bayes_opt --bayes_refit
+```
+
+批量对比脚本：
+```bash
+cd TimeKAN-main
+bash scripts/Battery/compare_models.sh
+```
+
+结果目录按模型分开：
+- `results/CNNLSTM/<setting>/...`
+- `results/iTransformer/<setting>/...`
+- `results/TimeMixer/<setting>/...`
+
+每个目录包含：贝叶斯优化 best json、metrics、预测 CSV、可视化图（含区间图）。

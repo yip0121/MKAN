@@ -5,24 +5,48 @@ import os
 from utils.metrics import metric
 
 
-# Reasonable high-impact search space for current SOH workflow.
-SEARCH_SPACE = {
+COMMON_SPACE = {
     'learning_rate': ('log_float', 1e-4, 5e-3),
     'batch_size': ('categorical', [16, 32, 64]),
-    'd_model': ('categorical', [8, 16, 32, 64]),
-    'e_layers': ('int', 1, 4),
-    'd_ff': ('categorical', [16, 32, 64, 128]),
     'dropout': ('float', 0.0, 0.3),
-    'begin_order': ('int', 1, 4),
-    'down_sampling_layers': ('int', 0, 2),
 }
 
-
+MODEL_SEARCH_SPACE = {
+    'TimeKAN': {
+        **COMMON_SPACE,
+        'd_model': ('categorical', [8, 16, 32, 64]),
+        'e_layers': ('int', 1, 4),
+        'd_ff': ('categorical', [16, 32, 64, 128]),
+        'begin_order': ('int', 1, 4),
+        'down_sampling_layers': ('int', 0, 2),
+    },
+    'CNNLSTM': {
+        **COMMON_SPACE,
+        'cnn_channels': ('categorical', [8, 16, 32, 64]),
+        'lstm_hidden': ('categorical', [16, 32, 64, 128]),
+        'lstm_layers': ('int', 1, 3),
+    },
+    'iTransformer': {
+        **COMMON_SPACE,
+        'd_model': ('categorical', [16, 32, 64, 128]),
+        'n_heads': ('categorical', [1, 2, 4, 8]),
+        'itf_layers': ('int', 1, 4),
+        'd_ff': ('categorical', [32, 64, 128, 256]),
+    },
+    'TimeMixer': {
+        **COMMON_SPACE,
+        'd_model': ('categorical', [16, 32, 64, 128]),
+        'time_mixer_layers': ('int', 1, 4),
+        'time_mixer_kernel': ('categorical', [3, 5, 7]),
+    },
+}
 
 
 def build_bayes_best_filename(base_args):
     train_tag = int(round(float(base_args.train_ratio) * 100))
-    return f'bayes_opt_best_train{train_tag}.json'
+    model = str(base_args.model)
+    return f'bayes_opt_best_{model}_train{train_tag}.json'
+
 
 def _suggest(trial, name, spec):
     stype = spec[0]
@@ -37,30 +61,34 @@ def _suggest(trial, name, spec):
     raise ValueError(f'Unknown search type: {stype}')
 
 
-def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
-    """Run Optuna (TPE) Bayesian optimization and return updated args.
+def _resolve_search_space(model_name):
+    if model_name not in MODEL_SEARCH_SPACE:
+        raise ValueError(f"No Bayesian search space configured for model '{model_name}'. Supported: {list(MODEL_SEARCH_SPACE.keys())}")
+    return MODEL_SEARCH_SPACE[model_name]
 
-    Objective: minimize validation-set MSE for each trial without using test set.
-    """
+
+def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
+    """Run Optuna (TPE) Bayesian optimization and return updated args."""
     try:
         import optuna
     except Exception as exc:
         raise RuntimeError(
-            'Bayesian optimization requested but optuna is unavailable. '\
+            'Bayesian optimization requested but optuna is unavailable. '
             'Please `pip install optuna` or disable --enable_bayes_opt.'
         ) from exc
 
+    search_space = _resolve_search_space(base_args.model)
+    print(f'[BayesOpt] Active model: {base_args.model}')
     print('[BayesOpt] Search space:')
-    print(json.dumps(SEARCH_SPACE, indent=2, default=str))
+    print(json.dumps(search_space, indent=2, default=str))
 
     def objective(trial):
         args_trial = copy.deepcopy(base_args)
 
-        sampled = {name: _suggest(trial, name, spec) for name, spec in SEARCH_SPACE.items()}
+        sampled = {name: _suggest(trial, name, spec) for name, spec in search_space.items()}
         for k, v in sampled.items():
             setattr(args_trial, k, v)
 
-        # Use shorter inner-loop training for optimization speed and stability.
         args_trial.train_epochs = base_args.bayes_train_epochs
         args_trial.patience = min(base_args.patience, max(3, base_args.bayes_train_epochs // 2))
         args_trial.itr = 1
@@ -97,11 +125,12 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
     print('[BayesOpt] Best value (MSE):', study.best_value)
     print('[BayesOpt] Best params:', study.best_params)
 
-    # Persist best summary only (as requested)
-    os.makedirs(os.path.join(base_args.project_root, 'results'), exist_ok=True)
-    best_path = os.path.join(base_args.project_root, 'results', build_bayes_best_filename(base_args))
+    model_result_root = os.path.join(base_args.project_root, 'results', base_args.model)
+    os.makedirs(model_result_root, exist_ok=True)
+    best_path = os.path.join(model_result_root, build_bayes_best_filename(base_args))
 
     best_payload = {
+        'model': base_args.model,
         'objective_split': 'val',
         'best_value': study.best_value,
         'best_params': study.best_params,
