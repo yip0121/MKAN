@@ -324,11 +324,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if not save_outputs:
             return metrics_payload
 
-        result_folder = os.path.join(self.args.project_root, 'results', setting) + os.sep
+        result_folder = os.path.join(self.args.project_root, 'results', self.args.model, setting) + os.sep
         if not os.path.exists(result_folder):
             os.makedirs(result_folder)
 
-        with open(os.path.join(self.args.project_root, 'result_long_term_forecast.txt'), 'a') as f:
+        with open(os.path.join(self.args.project_root, f'result_long_term_forecast_{self.args.model}.txt'), 'a') as f:
             f.write(setting + '  \n')
             f.write(f'mse:{mse}, mae:{mae}, r2:{r2}')
             f.write('\n\n')
