@@ -18,6 +18,8 @@ def data_provider(args, flag):
         target=args.target,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
+        target_col=args.target_col,
+        target_col_idx=args.target_col_idx,
     )
     print(flag, len(data_set))
     data_loader = DataLoader(
