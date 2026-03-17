@@ -77,7 +77,7 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
             _, val_loader = exp._get_data(flag='val')
             preds_q, trues = exp._test_single_step_loader(val_loader)
         else:
-            preds_q, trues = exp._test_multi_step_direct(val_data)
+            preds_q, trues = exp._test_multi_step_stride1_laststep(val_data)
 
         preds = preds_q[:, :, exp.q_median_idx:exp.q_median_idx + 1]
         _, mse, _, _, _ = metric(preds, trues)
