@@ -54,6 +54,8 @@ def build_parser():
     parser.add_argument('--seq_len', type=int, default=48)
     parser.add_argument('--label_len', type=int, default=0)
     parser.add_argument('--pred_len', type=int, default=10)
+    parser.add_argument('--multi_step_stride', type=int, default=1,
+                        help='sliding stride for multi-step direct testing; use 1 for dense last-step evaluation')
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
     parser.add_argument('--eval_last_step_only', type=str2bool, nargs='?', const=True, default=True,
                         help='if True, only evaluate/plot the final step of each forecast window')
@@ -139,6 +141,8 @@ def validate_split_args(args):
         raise ValueError('train_ratio must be > 0 and val_ratio must be >= 0')
     if args.train_ratio + args.val_ratio >= 1:
         raise ValueError('train_ratio + val_ratio must be < 1, leaving space for test set')
+    if args.multi_step_stride <= 0:
+        raise ValueError('multi_step_stride must be a positive integer')
 
 
 
