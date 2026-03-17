@@ -240,41 +240,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 preds_q.append(pred_q)
                 trues.append(y_true)
 
-                preds.append(pred)
-                trues.append(true)
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    if test_data.scale and self.args.inverse:
-                        shape = input.shape
-                        input = test_data.inverse_transform(input.squeeze(0)).reshape(shape)
-                    gt = np.concatenate((input[0, :, -1], true[0, -1:, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, -1:, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                start += pred_len
 
-        preds = np.array(preds)
+        preds_q = np.array(preds_q)
         trues = np.array(trues)
-        print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        print('test shape:', preds_q.shape, trues.shape)
+        preds_q = preds_q.reshape(-1, preds_q.shape[-2], preds_q.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
+        print('test shape:', preds_q.shape, trues.shape)
 
         if self.args.data == 'PEMS':
-            B, T, C = preds.shape
-            preds = test_data.inverse_transform(preds.reshape(-1, C)).reshape(B, T, C)
+            B, T, C = preds_q.shape
+            preds_q = test_data.inverse_transform(preds_q.reshape(-1, C)).reshape(B, T, C)
             trues = test_data.inverse_transform(trues.reshape(-1, C)).reshape(B, T, C)
 
-        preds = preds[:, -1:, :]
+        preds_q = preds_q[:, -1:, :]
         trues = trues[:, -1:, :]
-
-        # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
         if len(preds_q) == 0:
             raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
-        return np.array(preds_q), np.array(trues)
+        return preds_q, trues
 
 
     def _save_dwt_decomposition_plot(self, test_data, result_folder):
