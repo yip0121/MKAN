@@ -219,6 +219,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         preds_q = []
         trues = []
 
+        stride = max(1, int(getattr(self.args, 'multi_step_stride', 1)))
         start = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
@@ -240,7 +241,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 preds_q.append(pred_q)
                 trues.append(y_true)
 
-                start += pred_len
+                start += stride
 
         preds_q = np.array(preds_q)
         trues = np.array(trues)
@@ -253,9 +254,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             B, T, C = preds_q.shape
             preds_q = test_data.inverse_transform(preds_q.reshape(-1, C)).reshape(B, T, C)
             trues = test_data.inverse_transform(trues.reshape(-1, C)).reshape(B, T, C)
-
-        preds_q = preds_q[:, -1:, :]
-        trues = trues[:, -1:, :]
 
         if len(preds_q) == 0:
             raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
@@ -313,8 +311,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
             preds_q, trues = self._test_single_step_loader(test_loader)
         else:
-            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
             preds_q, trues = self._test_multi_step_direct(test_data)
+
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+            print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
