@@ -209,7 +209,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
         return preds_q, trues
 
-    def _test_multi_step_stride1_laststep(self, test_data):
+    def _test_multi_step_direct(self, test_data):
         source_series = test_data.data_x.astype(np.float32).copy()
 
         seq_len = self.args.seq_len
@@ -237,13 +237,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 elif pred_q.ndim == 1:
                     pred_q = pred_q[:, None]
 
-                preds_q.append(pred_q[-1:, :])
-                trues.append(y_true[-1:, :])
+                preds_q.append(pred_q)
+                trues.append(y_true)
 
-                start += 1
+                start += pred_len
 
         if len(preds_q) == 0:
-            raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step stride=1 last-step mode.')
+            raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
         return np.array(preds_q), np.array(trues)
 
@@ -298,8 +298,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
             preds_q, trues = self._test_single_step_loader(test_loader)
         else:
-            print(f'[Test] Multi-step mode active (pred_len={self.args.pred_len}, stride=1, use-last-step-as-result, true-history input).')
-            preds_q, trues = self._test_multi_step_stride1_laststep(test_data)
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
+            preds_q, trues = self._test_multi_step_direct(test_data)
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
