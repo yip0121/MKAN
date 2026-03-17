@@ -8,13 +8,10 @@ from utils.metrics import metric
 # Reasonable high-impact search space for current SOH workflow.
 SEARCH_SPACE = {
     'learning_rate': ('log_float', 1e-4, 5e-3),
-    'batch_size': ('categorical', [16, 32, 64]),
     'd_model': ('categorical', [8, 16, 32, 64]),
-    'e_layers': ('int', 1, 4),
+    'e_layers': ('int', 1, 3),
     'd_ff': ('categorical', [16, 32, 64, 128]),
     'dropout': ('float', 0.0, 0.3),
-    'begin_order': ('int', 1, 4),
-    'down_sampling_layers': ('int', 0, 2),
 }
 
 

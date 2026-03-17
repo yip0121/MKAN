@@ -273,7 +273,7 @@ class Model(nn.Module):
 
         self.wavelet_levels = max(0, int(getattr(configs, "dwt_level", configs.down_sampling_layers)))
         self.num_bands = self.wavelet_levels + 1
-        self.wavelet = getattr(configs, "wavelet", "db4")
+        self.wavelet = getattr(configs, "wavelet", "haar")
         self.wavelet_mode = getattr(configs, "wavelet_mode", "symmetric")
         self.dwt_frontend = DWTFrontEnd(self.wavelet_levels, wavelet=self.wavelet, mode=self.wavelet_mode)
 

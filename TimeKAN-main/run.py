@@ -37,24 +37,24 @@ def build_parser():
     parser.add_argument('--data_path', type=str, default='battery_36Ah_70W_65W_1551.xlsx')
     parser.add_argument('--target', type=str, default='soh')
     parser.add_argument('--features', type=str, default='S')
-    parser.add_argument('--train_ratio', type=float, default=0.4, help='train split ratio')
+    parser.add_argument('--train_ratio', type=float, default=0.7, help='train split ratio')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='validation split ratio')
 
     # sequence
-    parser.add_argument('--seq_len', type=int, default=24)
+    parser.add_argument('--seq_len', type=int, default=48)
     parser.add_argument('--label_len', type=int, default=0)
-    parser.add_argument('--pred_len', type=int, default=1)
+    parser.add_argument('--pred_len', type=int, default=10)
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
     parser.add_argument('--dec_in', type=int, default=1)
     parser.add_argument('--c_out', type=int, default=1)
-    parser.add_argument('--d_model', type=int, default=16)
+    parser.add_argument('--d_model', type=int, default=32)
     parser.add_argument('--e_layers', type=int, default=2)
     parser.add_argument('--d_ff', type=int, default=32)
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--moving_avg', type=int, default=15)
+    parser.add_argument('--moving_avg', type=int, default=25)
     parser.add_argument('--embed', type=str, default='timeF')
     parser.add_argument('--freq', type=str, default='h')
     parser.add_argument('--use_norm', type=int, default=1)
@@ -63,7 +63,7 @@ def build_parser():
     parser.add_argument('--begin_order', type=int, default=1)
     parser.add_argument('--channel_independence', type=int, default=1)
     parser.add_argument('--use_future_temporal_feature', type=int, default=0)
-    parser.add_argument('--wavelet', type=str, default='db4')
+    parser.add_argument('--wavelet', type=str, default='haar')
     parser.add_argument('--wavelet_mode', type=str, default='symmetric')
     parser.add_argument('--dwt_level', type=int, default=3)
 
@@ -71,7 +71,7 @@ def build_parser():
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/')
     parser.add_argument('--itr', type=int, default=1)
     parser.add_argument('--train_epochs', type=int, default=50)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--patience', type=int, default=10)
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--lradj', type=str, default='TST')
@@ -80,11 +80,11 @@ def build_parser():
     parser.add_argument('--use_amp', action='store_true', default=False)
 
     # bayesian optimization
-    parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
-    parser.add_argument('--bayes_trials', type=int, default=15, help='number of Bayesian optimization trials')
-    parser.add_argument('--bayes_train_epochs', type=int, default=8, help='epochs per Bayesian trial')
+    parser.add_argument('--enable_bayes_opt', action='store_true', default=True, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--bayes_trials', type=int, default=30, help='number of Bayesian optimization trials')
+    parser.add_argument('--bayes_train_epochs', type=int, default=30, help='epochs per Bayesian trial')
     parser.add_argument('--bayes_timeout', type=int, default=0, help='timeout seconds for Bayesian optimization; <=0 means no timeout')
-    parser.add_argument('--bayes_refit', action='store_true', default=False, help='after Bayesian optimization, refit once with best parameters')
+    parser.add_argument('--bayes_refit', action='store_true', default=True, help='after Bayesian optimization, refit once with best parameters')
 
     # misc kept for compatibility with existing experiment naming
     parser.add_argument('--comment', type=str, default='none')
@@ -136,8 +136,9 @@ def build_dataset_size_tag(data_path):
 
 def build_setting_name(args, ii):
     """Keep result/checkpoint folder naming compatible with the previous format."""
-    return '{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+    return '{}_{}_{}_{}_{}_{}_sl{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
         args.task_name,
+        args.train_ratio,
         args.model_id,
         args.comment,
         args.model,

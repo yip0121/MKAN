@@ -1,0 +1,21 @@
+{
+  "best_value": 0.06692476570606232,
+  "best_params": {
+    "learning_rate": 0.0034560920964205443,
+    "d_model": 8,
+    "e_layers": 1,
+    "d_ff": 16,
+    "dropout": 0.21335128438542705
+  },
+  "best_setting": "long_term_forecast_0.7_battery_soh_bo_bayes_t17_TimeKAN_30Ah_sl48_pl1_dm8_nh4_el1_dl1_df16_fc1_ebtimeF_dtTrue_Exp_0",
+  "n_trials": 25,
+  "refit_setting": "long_term_forecast_0.7_battery_soh_none_bayes_best_TimeKAN_30Ah_sl48_pl1_dm8_nh4_el1_dl1_df16_fc1_ebtimeF_dtTrue_Exp_0",
+  "refit_metrics": {
+    "mae": 0.176944762468338,
+    "mse": 0.0715133249759674,
+    "rmse": 0.2674197554588318,
+    "mape": 0.0017592689255252,
+    "mspe": 7.114464096957818e-06,
+    "r2": 0.7661326229572296
+  }
+}
