@@ -78,7 +78,7 @@ scripts\Battery\soh_20_1.bat
   - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
   - DWT band visualization (single figure): `dwt_bands_overview.png` (saved on final test run by default to reduce training overhead).
   - `pred_len=1`: single-step sliding-window evaluation (stride=1).
-  - `pred_len>1`: multi-step direct evaluation (window stride equals `pred_len`), and each next window uses true history from dataset (no prediction feedback).
+  - `pred_len>1`: multi-step evaluation with sliding window stride=1; each window predicts `pred_len` steps and only the last step is taken as this window output; next window still uses true history from dataset (no prediction feedback).
 - Temporal module update:
   - The previous convolution branch is replaced by a TCN-style dilated convolution block in `models/TimeKAN.py`.
 
