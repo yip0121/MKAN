@@ -346,6 +346,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             trues = trues[:, -1:, :]
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
 
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+            print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
+
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
         pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
