@@ -55,6 +55,8 @@ def build_parser():
     parser.add_argument('--label_len', type=int, default=0)
     parser.add_argument('--pred_len', type=int, default=10)
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
+    parser.add_argument('--eval_last_step_only', type=str2bool, nargs='?', const=True, default=True,
+                        help='if True, only evaluate/plot the final step of each forecast window')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
