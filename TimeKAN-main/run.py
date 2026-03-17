@@ -25,6 +25,16 @@ def seed_everything(seed: int = 2021):
 def build_parser():
     parser = argparse.ArgumentParser(description='TimeKAN for Battery SOH forecasting')
 
+    def str2bool(value):
+        if isinstance(value, bool):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {'true', '1', 'yes', 'y'}:
+            return True
+        if normalized in {'false', '0', 'no', 'n'}:
+            return False
+        raise argparse.ArgumentTypeError(f'Expected a boolean value, got: {value}')
+
     # task
     parser.add_argument('--task_name', type=str, default='long_term_forecast')
     parser.add_argument('--is_training', type=int, default=1)
@@ -76,15 +86,19 @@ def build_parser():
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--lradj', type=str, default='TST')
     parser.add_argument('--pct_start', type=float, default=0.2)
-    parser.add_argument('--num_workers', type=int, default=0)
+    default_workers = max(1, min(8, (os.cpu_count() or 1) // 2))
+    parser.add_argument('--num_workers', type=int, default=default_workers,
+                        help='DataLoader worker processes. Default auto-tuned from CPU cores (1~8).')
     parser.add_argument('--use_amp', action='store_true', default=False)
 
     # bayesian optimization
-    parser.add_argument('--enable_bayes_opt', action='store_true', default=True, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--disable_bayes_opt', action='store_false', dest='enable_bayes_opt', help='disable Bayesian hyper-parameter optimization')
     parser.add_argument('--bayes_trials', type=int, default=30, help='number of Bayesian optimization trials')
     parser.add_argument('--bayes_train_epochs', type=int, default=30, help='epochs per Bayesian trial')
     parser.add_argument('--bayes_timeout', type=int, default=0, help='timeout seconds for Bayesian optimization; <=0 means no timeout')
-    parser.add_argument('--bayes_refit', action='store_true', default=True, help='after Bayesian optimization, refit once with best parameters')
+    parser.add_argument('--bayes_refit', action='store_true', default=False, help='after Bayesian optimization, refit once with best parameters')
+    parser.add_argument('--no_bayes_refit', action='store_false', dest='bayes_refit', help='skip final retraining after Bayesian optimization')
 
     # misc kept for compatibility with existing experiment naming
     parser.add_argument('--comment', type=str, default='none')
@@ -97,7 +111,7 @@ def build_parser():
     parser.add_argument('--inverse', action='store_true', default=False)
 
     # gpu
-    parser.add_argument('--use_gpu', type=bool, default=True)
+    parser.add_argument('--use_gpu', type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--use_multi_gpu', action='store_true', default=False)
     parser.add_argument('--devices', type=str, default='0,1')
