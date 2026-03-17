@@ -15,7 +15,7 @@ class Dataset_BatterySOH(Dataset):
 
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='battery.xlsx',
-                 target='soh', scale=False, timeenc=0, freq='h', seasonal_patterns=None,
+                 target='soh', prediction_target='absolute', scale=False, timeenc=0, freq='h', seasonal_patterns=None,
                  train_ratio=0.7, val_ratio=0.1):
         if size is None:
             self.seq_len = 20
@@ -32,6 +32,7 @@ class Dataset_BatterySOH(Dataset):
 
         self.features = features
         self.target = target
+        self.prediction_target = prediction_target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
@@ -62,7 +63,11 @@ class Dataset_BatterySOH(Dataset):
         border2 = border2s[self.set_type]
 
         self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+        if self.prediction_target == 'delta':
+            data_delta = np.diff(data, axis=0, prepend=data[[0]])
+            self.data_y = data_delta[border1:border2]
+        else:
+            self.data_y = data[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index

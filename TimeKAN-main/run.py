@@ -46,6 +46,8 @@ def build_parser():
     parser.add_argument('--root_path', type=str, default='./dataset/battery/')
     parser.add_argument('--data_path', type=str, default='battery_36Ah_70W_65W_1551.xlsx')
     parser.add_argument('--target', type=str, default='soh')
+    parser.add_argument('--prediction_target', type=str, default='absolute', choices=['absolute', 'delta'],
+                        help='train/test target type: absolute SOH or first-order delta SOH')
     parser.add_argument('--features', type=str, default='S')
     parser.add_argument('--train_ratio', type=float, default=0.7, help='train split ratio')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='validation split ratio')

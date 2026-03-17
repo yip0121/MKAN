@@ -16,6 +16,7 @@ def data_provider(args, flag):
         size=[args.seq_len, args.label_len, args.pred_len],
         features=args.features,
         target=args.target,
+        prediction_target=args.prediction_target,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
     )
