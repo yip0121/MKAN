@@ -192,6 +192,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _test_single_step_loader(self, test_loader):
         preds_q = []
         trues = []
+        bases = []
         with torch.no_grad():
             for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
                 batch_x = batch_x.float().to(self.device)
@@ -202,12 +203,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
                 pred_q = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
+                base = batch_x[:, -1:, :].detach().cpu().numpy()
                 preds_q.append(pred_q)
                 trues.append(true)
+                bases.append(base)
 
         preds_q = np.array(preds_q).reshape(-1, preds_q[0].shape[-2], preds_q[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
-        return preds_q, trues
+        bases = np.array(bases).reshape(-1, bases[0].shape[-2], bases[0].shape[-1])
+        return preds_q, trues, bases
 
     def _test_multi_step_direct(self, test_data):
         source_series = test_data.data_x.astype(np.float32).copy()
@@ -218,7 +222,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds_q = []
         trues = []
+        bases = []
 
+        stride = max(1, int(getattr(self.args, 'multi_step_stride', 1)))
+        if getattr(self.args, 'eval_last_step_only', True) and pred_len > 1 and stride != 1:
+            print('[Test] eval_last_step_only=True enforces stride=1 to provide dense, non-overlapping last-step timeline.')
+            stride = 1
         start = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
@@ -239,14 +248,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds_q.append(pred_q)
                 trues.append(y_true)
+                bases.append(x_window[-1:, :])
 
-                start += pred_len
+                start += stride
 
         preds_q = np.array(preds_q)
         trues = np.array(trues)
+        bases = np.array(bases)
         print('test shape:', preds_q.shape, trues.shape)
         preds_q = preds_q.reshape(-1, preds_q.shape[-2], preds_q.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        bases = bases.reshape(-1, bases.shape[-2], bases.shape[-1])
         print('test shape:', preds_q.shape, trues.shape)
 
         if self.args.data == 'PEMS':
@@ -254,13 +266,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             preds_q = test_data.inverse_transform(preds_q.reshape(-1, C)).reshape(B, T, C)
             trues = test_data.inverse_transform(trues.reshape(-1, C)).reshape(B, T, C)
 
-        preds_q = preds_q[:, -1:, :]
-        trues = trues[:, -1:, :]
-
         if len(preds_q) == 0:
             raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
-        return preds_q, trues
+        return preds_q, trues, bases
 
 
     def _save_dwt_decomposition_plot(self, test_data, result_folder):
@@ -298,6 +307,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         plt.close(fig)
 
     @staticmethod
+    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
+        base_q = bases[:, :1, :1]
+        preds_abs = preds_q + base_q
+        if true_is_delta:
+            trues_abs = trues + base_q
+        else:
+            trues_abs = trues
+        return preds_abs, trues_abs
+
+    @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
         pd.DataFrame(flat).to_csv(path, index=False)
@@ -311,10 +330,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.eval()
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
-            preds_q, trues = self._test_single_step_loader(test_loader)
+            preds_q, trues, bases = self._test_single_step_loader(test_loader)
+            true_is_delta = True
         else:
-            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
-            preds_q, trues = self._test_multi_step_direct(test_data)
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
+            preds_q, trues, bases = self._test_multi_step_direct(test_data)
+            true_is_delta = False
+
+        if self.args.prediction_target == 'delta':
+            preds_q, trues = self._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
+            print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
+
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+            print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
