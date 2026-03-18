@@ -77,6 +77,9 @@ class Dataset_BatterySOH(Dataset):
 
         seq_x = self.data_x[s_begin:s_end]
         seq_y = self.data_y[r_begin:r_end]
+        if self.prediction_target == 'delta':
+            base = seq_x[-1:, :]
+            seq_y = seq_y - base
         seq_x_mark = np.zeros((self.seq_len, 1), dtype=np.float32)
         seq_y_mark = np.zeros((self.label_len + self.pred_len, 1), dtype=np.float32)
 

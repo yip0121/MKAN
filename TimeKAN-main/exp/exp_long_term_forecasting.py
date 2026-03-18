@@ -309,9 +309,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     @staticmethod
     def _restore_from_delta(preds_q, trues, bases, true_is_delta):
         base_q = bases[:, :1, :1]
-        preds_abs = np.cumsum(preds_q, axis=1) + base_q
+        preds_abs = preds_q + base_q
         if true_is_delta:
-            trues_abs = np.cumsum(trues, axis=1) + base_q
+            trues_abs = trues + base_q
         else:
             trues_abs = trues
         return preds_abs, trues_abs
