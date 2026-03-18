@@ -382,6 +382,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return preds_abs, trues_abs
 
     @staticmethod
+    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
+        base_q = bases[:, :1, :1]
+        preds_abs = preds_q + base_q
+        if true_is_delta:
+            trues_abs = trues + base_q
+        else:
+            trues_abs = trues
+        return preds_abs, trues_abs
+
+    @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
         pd.DataFrame(flat).to_csv(path, index=False)
