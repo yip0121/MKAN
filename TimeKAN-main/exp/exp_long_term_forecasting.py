@@ -35,6 +35,17 @@ class PinballLoss(nn.Module):
         return loss.mean()
 
 
+class MSEOnMedianLoss(nn.Module):
+    def __init__(self, median_idx):
+        super().__init__()
+        self.median_idx = int(median_idx)
+        self.mse = nn.MSELoss()
+
+    def forward(self, pred, target):
+        pred_median = pred[:, :, self.median_idx:self.median_idx + 1]
+        return self.mse(pred_median, target)
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -56,8 +67,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
 
     def _select_criterion(self):
-        # Keep quantile tensor on the same device as model outputs (CPU/GPU).
-        return PinballLoss(self.args.quantiles).to(self.device)
+        loss_type = getattr(self.args, 'loss_type', 'mse').lower()
+        if loss_type == 'pinball':
+            criterion = PinballLoss(self.args.quantiles)
+        elif loss_type == 'mse':
+            criterion = MSEOnMedianLoss(self.q_median_idx)
+        else:
+            raise ValueError(f'Unsupported loss_type: {loss_type}')
+        return criterion.to(self.device)
 
     def _build_decoder_input(self, batch_y):
         if self.args.down_sampling_layers == 0:
@@ -306,6 +323,64 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
         plt.close(fig)
 
+    def _save_kan_activation_plot(self, result_folder, num_points=200):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'band_blocks'):
+            return
+
+        bands = list(model_obj.band_blocks)
+        if len(bands) == 0:
+            return
+
+        def _freq_label(i, total):
+            if total <= 1:
+                return 'Low', 'SEI生长'
+            ratio = i / max(total - 1, 1)
+            if ratio <= 1 / 3:
+                return 'Low', 'SEI生长'
+            if ratio <= 2 / 3:
+                return 'Mid', '机械裂纹'
+            return 'High', 'dead Li膝点'
+
+        fig, axes = plt.subplots(len(bands), 1, figsize=(10, 3.0 * len(bands)), dpi=220, sharex=True)
+        if len(bands) == 1:
+            axes = [axes]
+
+        plotted = 0
+        for i, block in enumerate(bands):
+            try:
+                cheby_layer = block.channel_mixer[0].fc1
+                x_plot, phi = cheby_layer.get_activation_curve(num_points=num_points)
+            except Exception:
+                continue
+
+            freq, mech = _freq_label(i, len(bands))
+            axes[i].plot(x_plot, phi, linewidth=1.8)
+            axes[i].set_ylabel('phi(x)')
+            axes[i].grid(alpha=0.25)
+            axes[i].set_title(f'Band {i} (order={cheby_layer.degree}) - {freq} freq | {mech}')
+            plotted += 1
+
+        if plotted == 0:
+            plt.close(fig)
+            return
+
+        axes[-1].set_xlabel('x')
+        plt.tight_layout()
+        save_path = os.path.join(result_folder, 'kan_activation_functions.png')
+        fig.savefig(save_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+    @staticmethod
+    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
+        base_q = bases[:, :1, :1]
+        preds_abs = preds_q + base_q
+        if true_is_delta:
+            trues_abs = trues + base_q
+        else:
+            trues_abs = trues
+        return preds_abs, trues_abs
+
     @staticmethod
     def _restore_from_delta(preds_q, trues, bases, true_is_delta):
         base_q = bases[:, :1, :1]
@@ -345,6 +420,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             preds_q = preds_q[:, -1:, :]
             trues = trues[:, -1:, :]
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
+
+        if getattr(self.args, 'clip_predictions', False):
+            observed = test_data.data_x.astype(np.float32)
+            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
+            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
+            preds_q = np.clip(preds_q, clip_low, clip_high)
+            print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
@@ -406,6 +488,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
+        self._save_kan_activation_plot(result_folder)
+
         if save_dwt_plot:
             self._save_dwt_decomposition_plot(test_data, result_folder)
 
@@ -414,6 +498,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
+        print('Saved KAN activation plot to:', os.path.join(result_folder, 'kan_activation_functions.png'))
         if save_dwt_plot:
             print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
         return metrics_payload

@@ -61,6 +61,10 @@ def build_parser():
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
     parser.add_argument('--eval_last_step_only', type=str2bool, nargs='?', const=True, default=True,
                         help='if True, only evaluate/plot the final step of each forecast window')
+    parser.add_argument('--clip_predictions', type=str2bool, nargs='?', const=True, default=True,
+                        help='clip restored absolute predictions to a plausible SOH range for stable metrics/plots')
+    parser.add_argument('--clip_margin', type=float, default=2.0,
+                        help='margin added to observed test SOH min/max when clipping predictions')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
@@ -96,6 +100,8 @@ def build_parser():
     parser.add_argument('--num_workers', type=int, default=default_workers,
                         help='DataLoader worker processes. Default auto-tuned from CPU cores (1~8).')
     parser.add_argument('--use_amp', action='store_true', default=False)
+    parser.add_argument('--loss_type', type=str, default='mse', choices=['mse', 'pinball'],
+                        help='training loss type: mse (default) or pinball quantile loss')
 
     # bayesian optimization
     parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
