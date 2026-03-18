@@ -35,6 +35,17 @@ class PinballLoss(nn.Module):
         return loss.mean()
 
 
+class MSEOnMedianLoss(nn.Module):
+    def __init__(self, median_idx):
+        super().__init__()
+        self.median_idx = int(median_idx)
+        self.mse = nn.MSELoss()
+
+    def forward(self, pred, target):
+        pred_median = pred[:, :, self.median_idx:self.median_idx + 1]
+        return self.mse(pred_median, target)
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -56,8 +67,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
 
     def _select_criterion(self):
-        # Keep quantile tensor on the same device as model outputs (CPU/GPU).
-        return PinballLoss(self.args.quantiles).to(self.device)
+        loss_type = getattr(self.args, 'loss_type', 'mse').lower()
+        if loss_type == 'pinball':
+            criterion = PinballLoss(self.args.quantiles)
+        elif loss_type == 'mse':
+            criterion = MSEOnMedianLoss(self.q_median_idx)
+        else:
+            raise ValueError(f'Unsupported loss_type: {loss_type}')
+        return criterion.to(self.device)
 
     def _build_decoder_input(self, batch_y):
         if self.args.down_sampling_layers == 0:
@@ -192,6 +209,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _test_single_step_loader(self, test_loader):
         preds_q = []
         trues = []
+        bases = []
         with torch.no_grad():
             for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
                 batch_x = batch_x.float().to(self.device)
@@ -202,12 +220,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
                 pred_q = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
+                base = batch_x[:, -1:, :].detach().cpu().numpy()
                 preds_q.append(pred_q)
                 trues.append(true)
+                bases.append(base)
 
         preds_q = np.array(preds_q).reshape(-1, preds_q[0].shape[-2], preds_q[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
-        return preds_q, trues
+        bases = np.array(bases).reshape(-1, bases[0].shape[-2], bases[0].shape[-1])
+        return preds_q, trues, bases
 
     def _test_multi_step_direct(self, test_data):
         source_series = test_data.data_x.astype(np.float32).copy()
@@ -218,7 +239,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds_q = []
         trues = []
+        bases = []
 
+        stride = max(1, int(getattr(self.args, 'multi_step_stride', 1)))
+        if getattr(self.args, 'eval_last_step_only', True) and pred_len > 1 and stride != 1:
+            print('[Test] eval_last_step_only=True enforces stride=1 to provide dense, non-overlapping last-step timeline.')
+            stride = 1
         start = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
@@ -239,14 +265,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds_q.append(pred_q)
                 trues.append(y_true)
+                bases.append(x_window[-1:, :])
 
-                start += pred_len
+                start += stride
 
         preds_q = np.array(preds_q)
         trues = np.array(trues)
+        bases = np.array(bases)
         print('test shape:', preds_q.shape, trues.shape)
         preds_q = preds_q.reshape(-1, preds_q.shape[-2], preds_q.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        bases = bases.reshape(-1, bases.shape[-2], bases.shape[-1])
         print('test shape:', preds_q.shape, trues.shape)
 
         if self.args.data == 'PEMS':
@@ -254,13 +283,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             preds_q = test_data.inverse_transform(preds_q.reshape(-1, C)).reshape(B, T, C)
             trues = test_data.inverse_transform(trues.reshape(-1, C)).reshape(B, T, C)
 
-        preds_q = preds_q[:, -1:, :]
-        trues = trues[:, -1:, :]
-
         if len(preds_q) == 0:
             raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
-        return preds_q, trues
+        return preds_q, trues, bases
 
 
     def _save_dwt_decomposition_plot(self, test_data, result_folder):
@@ -297,6 +323,64 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
         plt.close(fig)
 
+    def _save_kan_activation_plot(self, result_folder, num_points=200):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'band_blocks'):
+            return
+
+        bands = list(model_obj.band_blocks)
+        if len(bands) == 0:
+            return
+
+        def _freq_label(i, total):
+            if total <= 1:
+                return 'Low', 'SEI生长'
+            ratio = i / max(total - 1, 1)
+            if ratio <= 1 / 3:
+                return 'Low', 'SEI生长'
+            if ratio <= 2 / 3:
+                return 'Mid', '机械裂纹'
+            return 'High', 'dead Li膝点'
+
+        fig, axes = plt.subplots(len(bands), 1, figsize=(10, 3.0 * len(bands)), dpi=220, sharex=True)
+        if len(bands) == 1:
+            axes = [axes]
+
+        plotted = 0
+        for i, block in enumerate(bands):
+            try:
+                cheby_layer = block.channel_mixer[0].fc1
+                x_plot, phi = cheby_layer.get_activation_curve(num_points=num_points)
+            except Exception:
+                continue
+
+            freq, mech = _freq_label(i, len(bands))
+            axes[i].plot(x_plot, phi, linewidth=1.8)
+            axes[i].set_ylabel('phi(x)')
+            axes[i].grid(alpha=0.25)
+            axes[i].set_title(f'Band {i} (order={cheby_layer.degree}) - {freq} freq | {mech}')
+            plotted += 1
+
+        if plotted == 0:
+            plt.close(fig)
+            return
+
+        axes[-1].set_xlabel('x')
+        plt.tight_layout()
+        save_path = os.path.join(result_folder, 'kan_activation_functions.png')
+        fig.savefig(save_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+    @staticmethod
+    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
+        base_q = bases[:, :1, :1]
+        preds_abs = preds_q + base_q
+        if true_is_delta:
+            trues_abs = trues + base_q
+        else:
+            trues_abs = trues
+        return preds_abs, trues_abs
+
     @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
@@ -311,10 +395,28 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.eval()
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
-            preds_q, trues = self._test_single_step_loader(test_loader)
+            preds_q, trues, bases = self._test_single_step_loader(test_loader)
+            true_is_delta = True
         else:
-            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
-            preds_q, trues = self._test_multi_step_direct(test_data)
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
+            preds_q, trues, bases = self._test_multi_step_direct(test_data)
+            true_is_delta = False
+
+        if self.args.prediction_target == 'delta':
+            preds_q, trues = self._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
+            print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
+
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+            print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
+
+        if getattr(self.args, 'clip_predictions', False):
+            observed = test_data.data_x.astype(np.float32)
+            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
+            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
+            preds_q = np.clip(preds_q, clip_low, clip_high)
+            print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
@@ -376,6 +478,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
+        self._save_kan_activation_plot(result_folder)
+
         if save_dwt_plot:
             self._save_dwt_decomposition_plot(test_data, result_folder)
 
@@ -384,6 +488,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
+        print('Saved KAN activation plot to:', os.path.join(result_folder, 'kan_activation_functions.png'))
         if save_dwt_plot:
             print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
         return metrics_payload
