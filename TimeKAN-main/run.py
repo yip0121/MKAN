@@ -65,6 +65,8 @@ def build_parser():
                         help='clip restored absolute predictions to a plausible SOH range for stable metrics/plots')
     parser.add_argument('--clip_margin', type=float, default=2.0,
                         help='margin added to observed test SOH min/max when clipping predictions')
+    parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
+                        help='run low/mid/high DWT band ablation analysis during test')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)

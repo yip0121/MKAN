@@ -323,6 +323,87 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
         plt.close(fig)
 
+    def _collect_test_predictions(self, test_data, test_loader):
+        if self.args.pred_len == 1:
+            preds_q, trues, bases = self._test_single_step_loader(test_loader)
+            true_is_delta = True
+        else:
+            preds_q, trues, bases = self._test_multi_step_direct(test_data)
+            true_is_delta = False
+
+        if self.args.prediction_target == 'delta':
+            preds_q, trues = self._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
+
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+
+        if getattr(self.args, 'clip_predictions', False):
+            observed = test_data.data_x.astype(np.float32)
+            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
+            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
+            preds_q = np.clip(preds_q, clip_low, clip_high)
+
+        return preds_q, trues
+
+    def _run_band_ablation_analysis(self, test_data, test_loader, baseline_rmse, result_folder):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'ablate_group'):
+            return
+
+        groups = ['low', 'mid', 'high']
+        rows = []
+
+        original = model_obj.ablate_group
+        try:
+            for group in groups:
+                model_obj.ablate_group = group
+                preds_q, trues = self._collect_test_predictions(test_data, test_loader)
+                preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
+                mae, mse, rmse, mape, mspe = metric(preds, trues)
+                r2 = R2(preds, trues)
+                delta_rmse = max(0.0, float(rmse) - float(baseline_rmse))
+                rows.append({
+                    'band_group': group,
+                    'mae': float(mae),
+                    'mse': float(mse),
+                    'rmse': float(rmse),
+                    'mape': float(mape),
+                    'mspe': float(mspe),
+                    'r2': float(r2),
+                    'delta_rmse': delta_rmse,
+                })
+        finally:
+            model_obj.ablate_group = original
+
+        if len(rows) == 0:
+            return
+
+        total_delta = sum(r['delta_rmse'] for r in rows)
+        for r in rows:
+            r['contribution_pct'] = (r['delta_rmse'] / total_delta * 100.0) if total_delta > 0 else 0.0
+
+        df = pd.DataFrame(rows)
+        csv_path = os.path.join(result_folder, 'band_ablation_metrics.csv')
+        df.to_csv(csv_path, index=False)
+
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=220)
+        labels = ['Low', 'Mid', 'High']
+        values = [df.loc[df['band_group'] == g, 'contribution_pct'].iloc[0] for g in ['low', 'mid', 'high']]
+        bars = ax.bar(labels, values, color=['#4C78A8', '#F58518', '#54A24B'])
+        ax.set_ylabel('Contribution (%)')
+        ax.set_title('Band Contribution Percentage (Ablation by RMSE Increase)')
+        ax.set_ylim(0, max(values + [1.0]) * 1.2)
+        for b, v in zip(bars, values):
+            ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.5, f'{v:.2f}%', ha='center', va='bottom')
+        plt.tight_layout()
+        fig_path = os.path.join(result_folder, 'band_contribution_bar.png')
+        fig.savefig(fig_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+        print('Saved band ablation metrics to:', csv_path)
+        print('Saved band contribution bar to:', fig_path)
+
     def _save_kan_activation_plot(self, result_folder, num_points=200):
         model_obj = self.model.module if hasattr(self.model, 'module') else self.model
         if not hasattr(model_obj, 'band_blocks'):
@@ -382,16 +463,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return preds_abs, trues_abs
 
     @staticmethod
-    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
-        base_q = bases[:, :1, :1]
-        preds_abs = preds_q + base_q
-        if true_is_delta:
-            trues_abs = trues + base_q
-        else:
-            trues_abs = trues
-        return preds_abs, trues_abs
-
-    @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
         pd.DataFrame(flat).to_csv(path, index=False)
@@ -403,29 +474,24 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             self.model.load_state_dict(torch.load(os.path.join(self.args.project_root, 'checkpoints', setting, 'checkpoint.pth')))
 
         self.model.eval()
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if hasattr(model_obj, 'ablate_group'):
+            model_obj.ablate_group = 'none'
+
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
-            preds_q, trues, bases = self._test_single_step_loader(test_loader)
-            true_is_delta = True
         else:
             print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
-            preds_q, trues, bases = self._test_multi_step_direct(test_data)
-            true_is_delta = False
+        preds_q, trues = self._collect_test_predictions(test_data, test_loader)
 
         if self.args.prediction_target == 'delta':
-            preds_q, trues = self._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
             print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
-
-        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
-            preds_q = preds_q[:, -1:, :]
-            trues = trues[:, -1:, :]
+        if self.args.eval_last_step_only:
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
-
         if getattr(self.args, 'clip_predictions', False):
             observed = test_data.data_x.astype(np.float32)
             clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
             clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
-            preds_q = np.clip(preds_q, clip_low, clip_high)
             print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
@@ -461,6 +527,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             f.write('\n\n')
 
         pd.DataFrame([metrics_payload]).to_csv(os.path.join(result_folder, 'metrics.csv'), index=False)
+        if getattr(self.args, 'run_band_ablation', False):
+            self._run_band_ablation_analysis(test_data, test_loader, baseline_rmse=rmse, result_folder=result_folder)
         self._save_array_csv(preds, os.path.join(result_folder, 'pred.csv'))
         self._save_array_csv(preds_q, os.path.join(result_folder, 'pred_quantiles.csv'))
         self._save_array_csv(trues, os.path.join(result_folder, 'true.csv'))
