@@ -362,7 +362,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
                 mae, mse, rmse, mape, mspe = metric(preds, trues)
                 r2 = R2(preds, trues)
-                delta_rmse = max(0.0, float(rmse) - float(baseline_rmse))
+                delta_rmse = float(rmse) - float(baseline_rmse)
                 rows.append({
                     'band_group': group,
                     'mae': float(mae),
@@ -403,6 +403,69 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         print('Saved band ablation metrics to:', csv_path)
         print('Saved band contribution bar to:', fig_path)
+
+    def _save_input_impact_heatmap(self, test_data, result_folder):
+        if not getattr(self.args, 'save_input_impact', True):
+            return
+
+        seq_len = int(self.args.seq_len)
+        pred_len = int(self.args.pred_len)
+        n_total = len(test_data.data_x)
+        max_row = n_total - seq_len - pred_len
+        if max_row < 0:
+            return
+
+        row_idx = int(getattr(self.args, 'input_impact_row', 0))
+        row_idx = max(0, min(row_idx, max_row))
+
+        source_series = test_data.data_x.astype(np.float32)
+        x_window = source_series[row_idx:row_idx + seq_len]
+        if x_window.ndim == 1:
+            x_window = x_window[:, None]
+
+        x_tensor = torch.from_numpy(x_window).unsqueeze(0).float().to(self.device)
+        x_tensor.requires_grad_(True)
+
+        label_plus_pred = self.args.label_len + pred_len
+        batch_y = torch.zeros((1, label_plus_pred, x_window.shape[-1]), dtype=torch.float32).to(self.device)
+        batch_x_mark = torch.zeros((1, seq_len, 1), dtype=torch.float32).to(self.device)
+        batch_y_mark = torch.zeros((1, label_plus_pred, 1), dtype=torch.float32).to(self.device)
+
+        self.model.eval()
+        impact_rows = []
+        outputs = self._forward_model(x_tensor, batch_y, batch_x_mark, batch_y_mark)
+        for step in range(pred_len):
+            if x_tensor.grad is not None:
+                x_tensor.grad.zero_()
+            self.model.zero_grad(set_to_none=True)
+            target = outputs[0, step, self.q_median_idx]
+            target.backward(retain_graph=True)
+            grad_abs = x_tensor.grad.detach().abs().cpu().numpy()[0, :, 0]
+            impact_rows.append(grad_abs)
+
+        impact = np.stack(impact_rows, axis=0)
+        impact = impact / (impact.max() + 1e-12)
+
+        fig, ax = plt.subplots(figsize=(10, 5), dpi=220)
+        im = ax.imshow(impact, aspect='auto', cmap='viridis', origin='lower')
+        ax.set_xlabel('History timestep (input window)')
+        ax.set_ylabel('Prediction step')
+        ax.set_title(f'Input-step impact on predictions (row={row_idx})')
+        ax.set_yticks(np.arange(pred_len))
+        ax.set_yticklabels(np.arange(1, pred_len + 1))
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Normalized impact')
+        plt.tight_layout()
+
+        fig_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.png')
+        fig.savefig(fig_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+        csv_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.csv')
+        pd.DataFrame(impact).to_csv(csv_path, index=False)
+
+        print('Saved input-step impact heatmap to:', fig_path)
+        print('Saved input-step impact matrix to:', csv_path)
 
     def _save_kan_activation_plot(self, result_folder, num_points=200):
         model_obj = self.model.module if hasattr(self.model, 'module') else self.model
@@ -556,6 +619,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
+        self._save_input_impact_heatmap(test_data, result_folder)
         self._save_kan_activation_plot(result_folder)
 
         if save_dwt_plot:

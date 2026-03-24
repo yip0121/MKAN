@@ -67,6 +67,10 @@ def build_parser():
                         help='margin added to observed test SOH min/max when clipping predictions')
     parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
                         help='run low/mid/high DWT band ablation analysis during test')
+    parser.add_argument('--save_input_impact', type=str2bool, nargs='?', const=True, default=True,
+                        help='save input-history impact heatmap for a selected test window')
+    parser.add_argument('--input_impact_row', type=int, default=0,
+                        help='test window row index used to draw input-step impact heatmap')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
