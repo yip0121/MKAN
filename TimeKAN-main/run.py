@@ -68,9 +68,11 @@ def build_parser():
     parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
                         help='run low/mid/high DWT band ablation analysis during test')
     parser.add_argument('--save_input_impact', type=str2bool, nargs='?', const=True, default=True,
-                        help='save input-history impact heatmap for a selected test window')
+                        help='save input-history impact heatmap during test')
+    parser.add_argument('--input_impact_average', type=str2bool, nargs='?', const=True, default=True,
+                        help='if true, average impact heatmap over all test windows')
     parser.add_argument('--input_impact_row', type=int, default=0,
-                        help='test window row index used to draw input-step impact heatmap')
+                        help='test window row index used when input_impact_average=false')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)

@@ -404,25 +404,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved band ablation metrics to:', csv_path)
         print('Saved band contribution bar to:', fig_path)
 
-    def _save_input_impact_heatmap(self, test_data, result_folder):
-        if not getattr(self.args, 'save_input_impact', True):
-            return
-
-        seq_len = int(self.args.seq_len)
-        pred_len = int(self.args.pred_len)
-        n_total = len(test_data.data_x)
-        max_row = n_total - seq_len - pred_len
-        if max_row < 0:
-            return
-
-        row_idx = int(getattr(self.args, 'input_impact_row', 0))
-        row_idx = max(0, min(row_idx, max_row))
-
-        source_series = test_data.data_x.astype(np.float32)
-        x_window = source_series[row_idx:row_idx + seq_len]
+    def _compute_input_impact_for_window(self, x_window, pred_len):
         if x_window.ndim == 1:
             x_window = x_window[:, None]
 
+        seq_len = x_window.shape[0]
         x_tensor = torch.from_numpy(x_window).unsqueeze(0).float().to(self.device)
         x_tensor.requires_grad_(True)
 
@@ -444,24 +430,56 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             impact_rows.append(grad_abs)
 
         impact = np.stack(impact_rows, axis=0)
+        return impact
+
+    def _save_input_impact_heatmap(self, test_data, result_folder):
+        if not getattr(self.args, 'save_input_impact', True):
+            return
+
+        seq_len = int(self.args.seq_len)
+        pred_len = int(self.args.pred_len)
+        n_total = len(test_data.data_x)
+        max_row = n_total - seq_len - pred_len
+        if max_row < 0:
+            return
+
+        source_series = test_data.data_x.astype(np.float32)
+        use_average = bool(getattr(self.args, 'input_impact_average', True))
+
+        if use_average:
+            impacts = []
+            for row_idx in range(max_row + 1):
+                x_window = source_series[row_idx:row_idx + seq_len]
+                impacts.append(self._compute_input_impact_for_window(x_window, pred_len))
+            impact = np.mean(np.stack(impacts, axis=0), axis=0)
+            tag = f'avg_{max_row + 1}windows'
+            title = f'Average input-step impact on predictions ({max_row + 1} windows)'
+        else:
+            row_idx = int(getattr(self.args, 'input_impact_row', 0))
+            row_idx = max(0, min(row_idx, max_row))
+            x_window = source_series[row_idx:row_idx + seq_len]
+            impact = self._compute_input_impact_for_window(x_window, pred_len)
+            tag = f'row{row_idx}'
+            title = f'Input-step impact on predictions (row={row_idx})'
+
         impact = impact / (impact.max() + 1e-12)
 
         fig, ax = plt.subplots(figsize=(10, 5), dpi=220)
         im = ax.imshow(impact, aspect='auto', cmap='viridis', origin='lower')
         ax.set_xlabel('History timestep (input window)')
         ax.set_ylabel('Prediction step')
-        ax.set_title(f'Input-step impact on predictions (row={row_idx})')
+        ax.set_title(title)
         ax.set_yticks(np.arange(pred_len))
         ax.set_yticklabels(np.arange(1, pred_len + 1))
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label('Normalized impact')
         plt.tight_layout()
 
-        fig_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.png')
+        fig_path = os.path.join(result_folder, f'input_step_impact_{tag}.png')
         fig.savefig(fig_path, dpi=320, bbox_inches='tight')
         plt.close(fig)
 
-        csv_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.csv')
+        csv_path = os.path.join(result_folder, f'input_step_impact_{tag}.csv')
         pd.DataFrame(impact).to_csv(csv_path, index=False)
 
         print('Saved input-step impact heatmap to:', fig_path)
