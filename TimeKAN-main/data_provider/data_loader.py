@@ -63,7 +63,11 @@ class Dataset_BatterySOH(Dataset):
         border2 = border2s[self.set_type]
 
         self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+        if self.prediction_target == 'delta':
+            data_delta = np.diff(data, axis=0, prepend=data[[0]])
+            self.data_y = data_delta[border1:border2]
+        else:
+            self.data_y = data[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index
