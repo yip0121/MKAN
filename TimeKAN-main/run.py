@@ -25,6 +25,16 @@ def seed_everything(seed: int = 2021):
 def build_parser():
     parser = argparse.ArgumentParser(description='TimeKAN for Battery SOH forecasting')
 
+    def str2bool(value):
+        if isinstance(value, bool):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {'true', '1', 'yes', 'y'}:
+            return True
+        if normalized in {'false', '0', 'no', 'n'}:
+            return False
+        raise argparse.ArgumentTypeError(f'Expected a boolean value, got: {value}')
+
     # task
     parser.add_argument('--task_name', type=str, default='long_term_forecast')
     parser.add_argument('--is_training', type=int, default=1)
@@ -36,6 +46,8 @@ def build_parser():
     parser.add_argument('--root_path', type=str, default='./dataset/battery/')
     parser.add_argument('--data_path', type=str, default='battery_36Ah_70W_65W_1551.xlsx')
     parser.add_argument('--target', type=str, default='soh')
+    parser.add_argument('--prediction_target', type=str, default='absolute', choices=['absolute', 'delta'],
+                        help='train/test target type: absolute SOH or first-order delta SOH')
     parser.add_argument('--features', type=str, default='S')
     parser.add_argument('--train_ratio', type=float, default=0.7, help='train split ratio')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='validation split ratio')
@@ -44,7 +56,23 @@ def build_parser():
     parser.add_argument('--seq_len', type=int, default=48)
     parser.add_argument('--label_len', type=int, default=0)
     parser.add_argument('--pred_len', type=int, default=10)
+    parser.add_argument('--multi_step_stride', type=int, default=1,
+                        help='sliding stride for multi-step direct testing; use 1 for dense last-step evaluation')
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
+    parser.add_argument('--eval_last_step_only', type=str2bool, nargs='?', const=True, default=True,
+                        help='if True, only evaluate/plot the final step of each forecast window')
+    parser.add_argument('--clip_predictions', type=str2bool, nargs='?', const=True, default=True,
+                        help='clip restored absolute predictions to a plausible SOH range for stable metrics/plots')
+    parser.add_argument('--clip_margin', type=float, default=2.0,
+                        help='margin added to observed test SOH min/max when clipping predictions')
+    parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
+                        help='run low/mid/high DWT band ablation analysis during test')
+    parser.add_argument('--save_input_impact', type=str2bool, nargs='?', const=True, default=True,
+                        help='save input-history impact heatmap during test')
+    parser.add_argument('--input_impact_average', type=str2bool, nargs='?', const=True, default=True,
+                        help='if true, average impact heatmap over all test windows')
+    parser.add_argument('--input_impact_row', type=int, default=0,
+                        help='test window row index used when input_impact_average=false')
 
     # model
     parser.add_argument('--enc_in', type=int, default=1)
@@ -76,15 +104,21 @@ def build_parser():
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--lradj', type=str, default='TST')
     parser.add_argument('--pct_start', type=float, default=0.2)
-    parser.add_argument('--num_workers', type=int, default=0)
+    default_workers = max(1, min(8, (os.cpu_count() or 1) // 2))
+    parser.add_argument('--num_workers', type=int, default=default_workers,
+                        help='DataLoader worker processes. Default auto-tuned from CPU cores (1~8).')
     parser.add_argument('--use_amp', action='store_true', default=False)
+    parser.add_argument('--loss_type', type=str, default='mse', choices=['mse', 'pinball'],
+                        help='training loss type: mse (default) or pinball quantile loss')
 
     # bayesian optimization
-    parser.add_argument('--enable_bayes_opt', action='store_true', default=True, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
+    parser.add_argument('--disable_bayes_opt', action='store_false', dest='enable_bayes_opt', help='disable Bayesian hyper-parameter optimization')
     parser.add_argument('--bayes_trials', type=int, default=30, help='number of Bayesian optimization trials')
     parser.add_argument('--bayes_train_epochs', type=int, default=30, help='epochs per Bayesian trial')
     parser.add_argument('--bayes_timeout', type=int, default=0, help='timeout seconds for Bayesian optimization; <=0 means no timeout')
-    parser.add_argument('--bayes_refit', action='store_true', default=True, help='after Bayesian optimization, refit once with best parameters')
+    parser.add_argument('--bayes_refit', action='store_true', default=False, help='after Bayesian optimization, refit once with best parameters')
+    parser.add_argument('--no_bayes_refit', action='store_false', dest='bayes_refit', help='skip final retraining after Bayesian optimization')
 
     # misc kept for compatibility with existing experiment naming
     parser.add_argument('--comment', type=str, default='none')
@@ -97,7 +131,7 @@ def build_parser():
     parser.add_argument('--inverse', action='store_true', default=False)
 
     # gpu
-    parser.add_argument('--use_gpu', type=bool, default=True)
+    parser.add_argument('--use_gpu', type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--use_multi_gpu', action='store_true', default=False)
     parser.add_argument('--devices', type=str, default='0,1')
@@ -123,6 +157,8 @@ def validate_split_args(args):
         raise ValueError('train_ratio must be > 0 and val_ratio must be >= 0')
     if args.train_ratio + args.val_ratio >= 1:
         raise ValueError('train_ratio + val_ratio must be < 1, leaving space for test set')
+    if args.multi_step_stride <= 0:
+        raise ValueError('multi_step_stride must be a positive integer')
 
 
 
