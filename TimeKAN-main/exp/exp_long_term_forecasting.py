@@ -35,6 +35,17 @@ class PinballLoss(nn.Module):
         return loss.mean()
 
 
+class MSEOnMedianLoss(nn.Module):
+    def __init__(self, median_idx):
+        super().__init__()
+        self.median_idx = int(median_idx)
+        self.mse = nn.MSELoss()
+
+    def forward(self, pred, target):
+        pred_median = pred[:, :, self.median_idx:self.median_idx + 1]
+        return self.mse(pred_median, target)
+
+
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
@@ -56,8 +67,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
 
     def _select_criterion(self):
-        # Keep quantile tensor on the same device as model outputs (CPU/GPU).
-        return PinballLoss(self.args.quantiles).to(self.device)
+        loss_type = getattr(self.args, 'loss_type', 'mse').lower()
+        if loss_type == 'pinball':
+            criterion = PinballLoss(self.args.quantiles)
+        elif loss_type == 'mse':
+            criterion = MSEOnMedianLoss(self.q_median_idx)
+        else:
+            raise ValueError(f'Unsupported loss_type: {loss_type}')
+        return criterion.to(self.device)
 
     def _build_decoder_input(self, batch_y):
         if self.args.down_sampling_layers == 0:
@@ -192,6 +209,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _test_single_step_loader(self, test_loader):
         preds_q = []
         trues = []
+        bases = []
         with torch.no_grad():
             for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
                 batch_x = batch_x.float().to(self.device)
@@ -202,12 +220,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = self._forward_model(batch_x, batch_y, batch_x_mark, batch_y_mark)
                 pred_q = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
+                base = batch_x[:, -1:, :].detach().cpu().numpy()
                 preds_q.append(pred_q)
                 trues.append(true)
+                bases.append(base)
 
         preds_q = np.array(preds_q).reshape(-1, preds_q[0].shape[-2], preds_q[0].shape[-1])
         trues = np.array(trues).reshape(-1, trues[0].shape[-2], trues[0].shape[-1])
-        return preds_q, trues
+        bases = np.array(bases).reshape(-1, bases[0].shape[-2], bases[0].shape[-1])
+        return preds_q, trues, bases
 
     def _test_multi_step_direct(self, test_data):
         source_series = test_data.data_x.astype(np.float32).copy()
@@ -218,7 +239,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds_q = []
         trues = []
+        bases = []
 
+        stride = max(1, int(getattr(self.args, 'multi_step_stride', 1)))
+        if getattr(self.args, 'eval_last_step_only', True) and pred_len > 1 and stride != 1:
+            print('[Test] eval_last_step_only=True enforces stride=1 to provide dense, non-overlapping last-step timeline.')
+            stride = 1
         start = 0
         with torch.no_grad():
             while start + seq_len + pred_len <= len(source_series):
@@ -239,14 +265,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds_q.append(pred_q)
                 trues.append(y_true)
+                bases.append(x_window[-1:, :])
 
-                start += pred_len
+                start += stride
 
         preds_q = np.array(preds_q)
         trues = np.array(trues)
+        bases = np.array(bases)
         print('test shape:', preds_q.shape, trues.shape)
         preds_q = preds_q.reshape(-1, preds_q.shape[-2], preds_q.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        bases = bases.reshape(-1, bases.shape[-2], bases.shape[-1])
         print('test shape:', preds_q.shape, trues.shape)
 
         if self.args.data == 'PEMS':
@@ -254,13 +283,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             preds_q = test_data.inverse_transform(preds_q.reshape(-1, C)).reshape(B, T, C)
             trues = test_data.inverse_transform(trues.reshape(-1, C)).reshape(B, T, C)
 
-        preds_q = preds_q[:, -1:, :]
-        trues = trues[:, -1:, :]
-
         if len(preds_q) == 0:
             raise ValueError('Not enough samples for the current seq_len/pred_len in multi-step direct mode.')
 
-        return preds_q, trues
+        return preds_q, trues, bases
 
 
     def _save_dwt_decomposition_plot(self, test_data, result_folder):
@@ -297,6 +323,208 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
         plt.close(fig)
 
+    def _collect_test_predictions(self, test_data, test_loader):
+        if self.args.pred_len == 1:
+            preds_q, trues, bases = self._test_single_step_loader(test_loader)
+            true_is_delta = True
+        else:
+            preds_q, trues, bases = self._test_multi_step_direct(test_data)
+            true_is_delta = False
+
+        if self.args.prediction_target == 'delta':
+            preds_q, trues = self._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
+
+        if self.args.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
+
+        if getattr(self.args, 'clip_predictions', False):
+            observed = test_data.data_x.astype(np.float32)
+            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
+            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
+            preds_q = np.clip(preds_q, clip_low, clip_high)
+
+        return preds_q, trues
+
+    def _run_band_ablation_analysis(self, test_data, test_loader, baseline_rmse, result_folder):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'ablate_group'):
+            return
+
+        groups = ['low', 'mid', 'high']
+        rows = []
+
+        original = model_obj.ablate_group
+        try:
+            for group in groups:
+                model_obj.ablate_group = group
+                preds_q, trues = self._collect_test_predictions(test_data, test_loader)
+                preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
+                mae, mse, rmse, mape, mspe = metric(preds, trues)
+                r2 = R2(preds, trues)
+                delta_rmse = float(rmse) - float(baseline_rmse)
+                rows.append({
+                    'band_group': group,
+                    'mae': float(mae),
+                    'mse': float(mse),
+                    'rmse': float(rmse),
+                    'mape': float(mape),
+                    'mspe': float(mspe),
+                    'r2': float(r2),
+                    'delta_rmse': delta_rmse,
+                })
+        finally:
+            model_obj.ablate_group = original
+
+        if len(rows) == 0:
+            return
+
+        total_delta = sum(r['delta_rmse'] for r in rows)
+        for r in rows:
+            r['contribution_pct'] = (r['delta_rmse'] / total_delta * 100.0) if total_delta > 0 else 0.0
+
+        df = pd.DataFrame(rows)
+        csv_path = os.path.join(result_folder, 'band_ablation_metrics.csv')
+        df.to_csv(csv_path, index=False)
+
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=220)
+        labels = ['Low', 'Mid', 'High']
+        values = [df.loc[df['band_group'] == g, 'contribution_pct'].iloc[0] for g in ['low', 'mid', 'high']]
+        bars = ax.bar(labels, values, color=['#4C78A8', '#F58518', '#54A24B'])
+        ax.set_ylabel('Contribution (%)')
+        ax.set_title('Band Contribution Percentage (Ablation by RMSE Increase)')
+        ax.set_ylim(0, max(values + [1.0]) * 1.2)
+        for b, v in zip(bars, values):
+            ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.5, f'{v:.2f}%', ha='center', va='bottom')
+        plt.tight_layout()
+        fig_path = os.path.join(result_folder, 'band_contribution_bar.png')
+        fig.savefig(fig_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+        print('Saved band ablation metrics to:', csv_path)
+        print('Saved band contribution bar to:', fig_path)
+
+    def _save_input_impact_heatmap(self, test_data, result_folder):
+        if not getattr(self.args, 'save_input_impact', True):
+            return
+
+        seq_len = int(self.args.seq_len)
+        pred_len = int(self.args.pred_len)
+        n_total = len(test_data.data_x)
+        max_row = n_total - seq_len - pred_len
+        if max_row < 0:
+            return
+
+        row_idx = int(getattr(self.args, 'input_impact_row', 0))
+        row_idx = max(0, min(row_idx, max_row))
+
+        source_series = test_data.data_x.astype(np.float32)
+        x_window = source_series[row_idx:row_idx + seq_len]
+        if x_window.ndim == 1:
+            x_window = x_window[:, None]
+
+        x_tensor = torch.from_numpy(x_window).unsqueeze(0).float().to(self.device)
+        x_tensor.requires_grad_(True)
+
+        label_plus_pred = self.args.label_len + pred_len
+        batch_y = torch.zeros((1, label_plus_pred, x_window.shape[-1]), dtype=torch.float32).to(self.device)
+        batch_x_mark = torch.zeros((1, seq_len, 1), dtype=torch.float32).to(self.device)
+        batch_y_mark = torch.zeros((1, label_plus_pred, 1), dtype=torch.float32).to(self.device)
+
+        self.model.eval()
+        impact_rows = []
+        outputs = self._forward_model(x_tensor, batch_y, batch_x_mark, batch_y_mark)
+        for step in range(pred_len):
+            if x_tensor.grad is not None:
+                x_tensor.grad.zero_()
+            self.model.zero_grad(set_to_none=True)
+            target = outputs[0, step, self.q_median_idx]
+            target.backward(retain_graph=True)
+            grad_abs = x_tensor.grad.detach().abs().cpu().numpy()[0, :, 0]
+            impact_rows.append(grad_abs)
+
+        impact = np.stack(impact_rows, axis=0)
+        impact = impact / (impact.max() + 1e-12)
+
+        fig, ax = plt.subplots(figsize=(10, 5), dpi=220)
+        im = ax.imshow(impact, aspect='auto', cmap='viridis', origin='lower')
+        ax.set_xlabel('History timestep (input window)')
+        ax.set_ylabel('Prediction step')
+        ax.set_title(f'Input-step impact on predictions (row={row_idx})')
+        ax.set_yticks(np.arange(pred_len))
+        ax.set_yticklabels(np.arange(1, pred_len + 1))
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Normalized impact')
+        plt.tight_layout()
+
+        fig_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.png')
+        fig.savefig(fig_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+        csv_path = os.path.join(result_folder, f'input_step_impact_row{row_idx}.csv')
+        pd.DataFrame(impact).to_csv(csv_path, index=False)
+
+        print('Saved input-step impact heatmap to:', fig_path)
+        print('Saved input-step impact matrix to:', csv_path)
+
+    def _save_kan_activation_plot(self, result_folder, num_points=200):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if not hasattr(model_obj, 'band_blocks'):
+            return
+
+        bands = list(model_obj.band_blocks)
+        if len(bands) == 0:
+            return
+
+        def _freq_label(i, total):
+            if total <= 1:
+                return 'Low', 'SEI生长'
+            ratio = i / max(total - 1, 1)
+            if ratio <= 1 / 3:
+                return 'Low', 'SEI生长'
+            if ratio <= 2 / 3:
+                return 'Mid', '机械裂纹'
+            return 'High', 'dead Li膝点'
+
+        fig, axes = plt.subplots(len(bands), 1, figsize=(10, 3.0 * len(bands)), dpi=220, sharex=True)
+        if len(bands) == 1:
+            axes = [axes]
+
+        plotted = 0
+        for i, block in enumerate(bands):
+            try:
+                cheby_layer = block.channel_mixer[0].fc1
+                x_plot, phi = cheby_layer.get_activation_curve(num_points=num_points)
+            except Exception:
+                continue
+
+            freq, mech = _freq_label(i, len(bands))
+            axes[i].plot(x_plot, phi, linewidth=1.8)
+            axes[i].set_ylabel('phi(x)')
+            axes[i].grid(alpha=0.25)
+            axes[i].set_title(f'Band {i} (order={cheby_layer.degree}) - {freq} freq | {mech}')
+            plotted += 1
+
+        if plotted == 0:
+            plt.close(fig)
+            return
+
+        axes[-1].set_xlabel('x')
+        plt.tight_layout()
+        save_path = os.path.join(result_folder, 'kan_activation_functions.png')
+        fig.savefig(save_path, dpi=320, bbox_inches='tight')
+        plt.close(fig)
+
+    @staticmethod
+    def _restore_from_delta(preds_q, trues, bases, true_is_delta):
+        base_q = bases[:, :1, :1]
+        preds_abs = preds_q + base_q
+        if true_is_delta:
+            trues_abs = trues + base_q
+        else:
+            trues_abs = trues
+        return preds_abs, trues_abs
+
     @staticmethod
     def _save_array_csv(array, path):
         flat = array.reshape(array.shape[0], -1)
@@ -309,12 +537,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             self.model.load_state_dict(torch.load(os.path.join(self.args.project_root, 'checkpoints', setting, 'checkpoint.pth')))
 
         self.model.eval()
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        if hasattr(model_obj, 'ablate_group'):
+            model_obj.ablate_group = 'none'
+
         if self.args.pred_len == 1:
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
-            preds_q, trues = self._test_single_step_loader(test_loader)
         else:
-            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.pred_len}, true-history input).')
-            preds_q, trues = self._test_multi_step_direct(test_data)
+            print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
+        preds_q, trues = self._collect_test_predictions(test_data, test_loader)
+
+        if self.args.prediction_target == 'delta':
+            print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
+        if self.args.eval_last_step_only:
+            print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
+        if getattr(self.args, 'clip_predictions', False):
+            observed = test_data.data_x.astype(np.float32)
+            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
+            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
+            print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
@@ -349,6 +590,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             f.write('\n\n')
 
         pd.DataFrame([metrics_payload]).to_csv(os.path.join(result_folder, 'metrics.csv'), index=False)
+        if getattr(self.args, 'run_band_ablation', False):
+            self._run_band_ablation_analysis(test_data, test_loader, baseline_rmse=rmse, result_folder=result_folder)
         self._save_array_csv(preds, os.path.join(result_folder, 'pred.csv'))
         self._save_array_csv(preds_q, os.path.join(result_folder, 'pred_quantiles.csv'))
         self._save_array_csv(trues, os.path.join(result_folder, 'true.csv'))
@@ -376,6 +619,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
+        self._save_input_impact_heatmap(test_data, result_folder)
+        self._save_kan_activation_plot(result_folder)
+
         if save_dwt_plot:
             self._save_dwt_decomposition_plot(test_data, result_folder)
 
@@ -384,6 +630,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
+        print('Saved KAN activation plot to:', os.path.join(result_folder, 'kan_activation_functions.png'))
         if save_dwt_plot:
             print('Saved DWT band overview to:', os.path.join(result_folder, 'dwt_bands_overview.png'))
         return metrics_payload
