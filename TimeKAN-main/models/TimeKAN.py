@@ -285,6 +285,7 @@ class Model(nn.Module):
             M_KAN(configs.d_model, configs.seq_len, order=configs.begin_order + i, dropout=configs.dropout)
             for i in range(self.num_bands)
         ])
+        self.ablate_group = 'none'  # one of: none/low/mid/high
 
         self.projection_layer = nn.Linear(configs.d_model, self.num_quantiles, bias=True)
         self.predict_layer = nn.Linear(configs.seq_len, configs.pred_len)
@@ -303,6 +304,21 @@ class Model(nn.Module):
             band_in = band.permute(0, 2, 1).contiguous().reshape(bsz * n_channels, self.seq_len, 1)
             emb = self.enc_embedding(band_in, None)
             band_outs.append(self.band_blocks[i](emb))
+
+        if self.ablate_group in {'low', 'mid', 'high'} and len(band_outs) > 0:
+            total = len(band_outs)
+
+            def _group_for_idx(idx):
+                ratio = idx / max(total - 1, 1)
+                if ratio <= 1 / 3:
+                    return 'low'
+                if ratio <= 2 / 3:
+                    return 'mid'
+                return 'high'
+
+            for i in range(total):
+                if _group_for_idx(i) == self.ablate_group:
+                    band_outs[i] = torch.zeros_like(band_outs[i])
 
         # Replace old CFD fusion with simple band-wise sum, then prediction head
         fused = torch.stack(band_outs, dim=0).sum(dim=0)
