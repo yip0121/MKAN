@@ -621,8 +621,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         if getattr(self.args, 'uq_method', 'mc') == 'mc':
-            _, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+            pred_mean, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+            preds = pred_mean
+            interval_width = float(np.mean(pred_upper - pred_lower))
             print(f'[Test] UQ method: MC dropout (samples={self.args.mc_samples}, alpha={self.args.mc_alpha}).')
+            print(f'[Test] Mean MC interval width: {interval_width:.6f}')
         else:
             pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
             pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
