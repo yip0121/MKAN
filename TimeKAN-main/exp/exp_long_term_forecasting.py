@@ -298,7 +298,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if len(series) < self.args.seq_len:
             return
 
-        x_window = series[:self.args.seq_len]
+        max_row = len(series) - self.args.seq_len
+        row_idx = int(getattr(self.args, 'dwt_plot_row', 0))
+        row_idx = max(0, min(row_idx, max_row))
+
+        cycle_hint = int(getattr(self.args, 'dwt_plot_cycle', -1))
+        if cycle_hint >= 0 and hasattr(test_data, 'cycle_x'):
+            cycle_vals = test_data.cycle_x.reshape(-1)
+            match_idx = np.where(np.isclose(cycle_vals, float(cycle_hint)))[0]
+            if len(match_idx) > 0:
+                row_idx = int(max(0, min(match_idx[0], max_row)))
+
+        x_window = series[row_idx:row_idx + self.args.seq_len]
         if x_window.ndim == 1:
             x_window = x_window[:, None]
 
@@ -312,7 +323,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         nrows = len(bands_np) + 1
         fig, axes = plt.subplots(nrows, 1, figsize=(10, 2.2 * nrows), sharex=True)
         axes[0].plot(orig, color='black', linewidth=1.5)
-        axes[0].set_title('Original sequence (first channel)')
+        if hasattr(test_data, 'cycle_x'):
+            cycle_start = float(test_data.cycle_x[row_idx, 0])
+            axes[0].set_title(f'Original sequence (first channel) | row={row_idx}, cycle={cycle_start:.0f}')
+        else:
+            axes[0].set_title(f'Original sequence (first channel) | row={row_idx}')
 
         for i, band in enumerate(bands_np):
             name = 'Low band (A)' if i == 0 else f'High band D{i}'

@@ -51,6 +51,7 @@ class Dataset_BatterySOH(Dataset):
 
         df_battery = df_raw.iloc[:, [0, 3]].copy()
         df_battery.columns = ['cycle', 'soh']
+        cycles = df_battery[['cycle']].values.astype(np.float32)
         data = df_battery[['soh']].values.astype(np.float32)
 
         num_train = int(len(data) * self.train_ratio)
@@ -63,11 +64,8 @@ class Dataset_BatterySOH(Dataset):
         border2 = border2s[self.set_type]
 
         self.data_x = data[border1:border2]
-        if self.prediction_target == 'delta':
-            data_delta = np.diff(data, axis=0, prepend=data[[0]])
-            self.data_y = data_delta[border1:border2]
-        else:
-            self.data_y = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.cycle_x = cycles[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index

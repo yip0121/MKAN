@@ -67,6 +67,10 @@ def build_parser():
                         help='margin added to observed test SOH min/max when clipping predictions')
     parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
                         help='run low/mid/high DWT band ablation analysis during test')
+    parser.add_argument('--dwt_plot_row', type=int, default=0,
+                        help='start row index in test split used for DWT decomposition visualization')
+    parser.add_argument('--dwt_plot_cycle', type=int, default=-1,
+                        help='if >=0, use this cycle number as DWT visualization anchor (overrides dwt_plot_row)')
     parser.add_argument('--save_input_impact', type=str2bool, nargs='?', const=True, default=True,
                         help='save input-history impact heatmap during test')
     parser.add_argument('--input_impact_average', type=str2bool, nargs='?', const=True, default=True,
