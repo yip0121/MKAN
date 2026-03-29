@@ -114,6 +114,12 @@ def build_parser():
     parser.add_argument('--use_amp', action='store_true', default=False)
     parser.add_argument('--loss_type', type=str, default='mse', choices=['mse', 'pinball'],
                         help='training loss type: mse (default) or pinball quantile loss')
+    parser.add_argument('--uq_method', type=str, default='mc', choices=['mc', 'quantile'],
+                        help='uncertainty quantification method for interval plots')
+    parser.add_argument('--mc_samples', type=int, default=30,
+                        help='number of Monte Carlo dropout forward passes for uq_method=mc')
+    parser.add_argument('--mc_alpha', type=float, default=0.1,
+                        help='tail probability for MC interval, e.g. 0.1 -> 90% interval')
 
     # bayesian optimization
     parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
@@ -163,6 +169,10 @@ def validate_split_args(args):
         raise ValueError('train_ratio + val_ratio must be < 1, leaving space for test set')
     if args.multi_step_stride <= 0:
         raise ValueError('multi_step_stride must be a positive integer')
+    if args.mc_samples <= 0:
+        raise ValueError('mc_samples must be a positive integer')
+    if args.mc_alpha <= 0 or args.mc_alpha >= 1:
+        raise ValueError('mc_alpha must be in (0, 1)')
 
 
 

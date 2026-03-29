@@ -361,6 +361,35 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         return preds_q, trues
 
+    def _mc_interval_from_dropout(self, test_data, test_loader):
+        model_obj = self.model.module if hasattr(self.model, 'module') else self.model
+        original_ablate = getattr(model_obj, 'ablate_group', 'none')
+        original_train_state = self.model.training
+
+        samples = []
+        trues_ref = None
+        try:
+            if hasattr(model_obj, 'ablate_group'):
+                model_obj.ablate_group = 'none'
+            for _ in range(int(self.args.mc_samples)):
+                self.model.train()
+                preds_q_i, trues_i = self._collect_test_predictions(test_data, test_loader)
+                point_i = preds_q_i[:, :, self.q_median_idx:self.q_median_idx + 1]
+                samples.append(point_i)
+                if trues_ref is None:
+                    trues_ref = trues_i
+        finally:
+            if hasattr(model_obj, 'ablate_group'):
+                model_obj.ablate_group = original_ablate
+            self.model.train(original_train_state)
+
+        sample_arr = np.stack(samples, axis=0)
+        alpha = float(self.args.mc_alpha)
+        lower = np.quantile(sample_arr, alpha / 2.0, axis=0)
+        upper = np.quantile(sample_arr, 1.0 - alpha / 2.0, axis=0)
+        mean = np.mean(sample_arr, axis=0)
+        return mean, lower, upper, trues_ref
+
     def _run_band_ablation_analysis(self, test_data, test_loader, baseline_rmse, result_folder):
         model_obj = self.model.module if hasattr(self.model, 'module') else self.model
         if not hasattr(model_obj, 'ablate_group'):
@@ -591,8 +620,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
 
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
-        pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
-        pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
+        if getattr(self.args, 'uq_method', 'mc') == 'mc':
+            _, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+            print(f'[Test] UQ method: MC dropout (samples={self.args.mc_samples}, alpha={self.args.mc_alpha}).')
+        else:
+            pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
+            pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
+            print('[Test] UQ method: quantile outputs.')
 
         print('test shape:', preds_q.shape, trues.shape)
 
