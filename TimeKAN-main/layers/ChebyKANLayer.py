@@ -50,3 +50,16 @@ class ChebyKANLinear(nn.Module):
             mul_res = mul_1 * mul_2
             y = torch.concat([y[:,:y.shape[1]//2], mul_res])
         return y
+
+    def get_activation_curve(self, num_points=200):
+        import numpy as np
+
+        x_plot = np.linspace(-1.0, 1.0, int(num_points), dtype=np.float32)
+        theta = np.arccos(np.clip(x_plot, -1.0 + self.epsilon, 1.0 - self.epsilon))
+        orders = np.arange(0, self.degree + 1, dtype=np.float32)
+        basis = np.cos(np.outer(theta, orders))
+
+        coeff = self.cheby_coeffs.detach().float().cpu().numpy()
+        coeff_avg = coeff.mean(axis=(0, 1))
+        phi = basis @ coeff_avg
+        return x_plot, phi.astype(np.float32)
