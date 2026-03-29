@@ -72,9 +72,18 @@ def run_bayesian_optimization(base_args, ExpClass, build_setting_name_fn):
         exp.model.eval()
         if args_trial.pred_len == 1:
             _, val_loader = exp._get_data(flag='val')
-            preds_q, trues = exp._test_single_step_loader(val_loader)
+            preds_q, trues, bases = exp._test_single_step_loader(val_loader)
+            true_is_delta = True
         else:
-            preds_q, trues = exp._test_multi_step_direct(val_data)
+            preds_q, trues, bases = exp._test_multi_step_direct(val_data)
+            true_is_delta = False
+
+        if getattr(args_trial, 'prediction_target', 'absolute') == 'delta':
+            preds_q, trues = exp._restore_from_delta(preds_q, trues, bases, true_is_delta=true_is_delta)
+
+        if args_trial.eval_last_step_only and preds_q.shape[1] > 1:
+            preds_q = preds_q[:, -1:, :]
+            trues = trues[:, -1:, :]
 
         preds = preds_q[:, :, exp.q_median_idx:exp.q_median_idx + 1]
         _, mse, _, _, _ = metric(preds, trues)
