@@ -338,7 +338,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         fig.savefig(os.path.join(result_folder, 'dwt_bands_overview.png'), bbox_inches='tight')
         plt.close(fig)
 
-    def _collect_test_predictions(self, test_data, test_loader, apply_clip=True):
+    def _collect_test_predictions(self, test_data, test_loader):
         if self.args.pred_len == 1:
             preds_q, trues, bases = self._test_single_step_loader(test_loader)
             true_is_delta = True
@@ -352,12 +352,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.eval_last_step_only and preds_q.shape[1] > 1:
             preds_q = preds_q[:, -1:, :]
             trues = trues[:, -1:, :]
-
-        if apply_clip and getattr(self.args, 'clip_predictions', False):
-            observed = test_data.data_x.astype(np.float32)
-            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
-            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
-            preds_q = np.clip(preds_q, clip_low, clip_high)
 
         return preds_q, trues
 
@@ -373,7 +367,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 model_obj.ablate_group = 'none'
             for _ in range(int(self.args.mc_samples)):
                 self.model.train()
-                preds_q_i, trues_i = self._collect_test_predictions(test_data, test_loader, apply_clip=False)
+                preds_q_i, trues_i = self._collect_test_predictions(test_data, test_loader)
                 point_i = preds_q_i[:, :, self.q_median_idx:self.q_median_idx + 1]
                 samples.append(point_i)
                 if trues_ref is None:
@@ -402,7 +396,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         try:
             for group in groups:
                 model_obj.ablate_group = group
-                preds_q, trues = self._collect_test_predictions(test_data, test_loader, apply_clip=True)
+                preds_q, trues = self._collect_test_predictions(test_data, test_loader)
                 preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
                 mae, mse, rmse, mape, mspe = metric(preds, trues)
                 r2 = R2(preds, trues)
@@ -607,18 +601,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('[Test] Single-step mode active (pred_len=1, sliding window stride=1).')
         else:
             print(f'[Test] Multi-step direct mode active (pred_len={self.args.pred_len}, stride={self.args.multi_step_stride}, true-history input).')
-        preds_q, trues = self._collect_test_predictions(test_data, test_loader, apply_clip=True)
+        preds_q, trues = self._collect_test_predictions(test_data, test_loader)
 
         if self.args.prediction_target == 'delta':
             print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
         if self.args.eval_last_step_only:
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
-        if apply_clip and getattr(self.args, 'clip_predictions', False):
-            observed = test_data.data_x.astype(np.float32)
-            clip_low = float(np.min(observed) - float(getattr(self.args, 'clip_margin', 0.0)))
-            clip_high = float(np.max(observed) + float(getattr(self.args, 'clip_margin', 0.0)))
-            print(f'[Test] Clipped predictions to [{clip_low:.4f}, {clip_high:.4f}] for stability.')
-
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
         if getattr(self.args, 'uq_method', 'mc') == 'mc':
             pred_mean, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)

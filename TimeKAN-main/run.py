@@ -61,10 +61,6 @@ def build_parser():
     parser.add_argument('--quantiles', type=str, default='0.95,0.5,0.05', help='comma-separated quantiles for pinball loss, e.g. 0.95,0.5,0.05')
     parser.add_argument('--eval_last_step_only', type=str2bool, nargs='?', const=True, default=True,
                         help='if True, only evaluate/plot the final step of each forecast window')
-    parser.add_argument('--clip_predictions', type=str2bool, nargs='?', const=True, default=True,
-                        help='clip restored absolute predictions to a plausible SOH range for stable metrics/plots')
-    parser.add_argument('--clip_margin', type=float, default=2.0,
-                        help='margin added to observed test SOH min/max when clipping predictions')
     parser.add_argument('--run_band_ablation', type=str2bool, nargs='?', const=True, default=False,
                         help='run low/mid/high DWT band ablation analysis during test')
     parser.add_argument('--dwt_plot_row', type=int, default=0,
