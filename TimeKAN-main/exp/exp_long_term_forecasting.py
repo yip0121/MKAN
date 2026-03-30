@@ -50,7 +50,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
         self.quantiles = np.array(self.args.quantiles, dtype=np.float32)
+        self.q_lower_idx = int(np.argmin(np.abs(self.quantiles - 0.05)))
         self.q_median_idx = int(np.argmin(np.abs(self.quantiles - 0.5)))
+        self.q_upper_idx = int(np.argmin(np.abs(self.quantiles - 0.95)))
 
     def _build_model(self):
         model = self.model_dict[self.args.model].Model(self.args).float()
@@ -606,11 +608,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.eval_last_step_only:
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
         preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
-        pred_mean, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
-        preds = pred_mean
-        interval_width = float(np.mean(pred_upper - pred_lower))
-        print(f'[Test] UQ method: MC dropout (samples={self.args.mc_samples}, alpha={self.args.mc_alpha}).')
-        print(f'[Test] Mean MC interval width: {interval_width:.6f}')
+        if getattr(self.args, 'uq_method', 'mc') == 'mc':
+            pred_mean, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+            preds = pred_mean
+            interval_width = float(np.mean(pred_upper - pred_lower))
+            print(f'[Test] UQ method: MC dropout (samples={self.args.mc_samples}, alpha={self.args.mc_alpha}).')
+            print(f'[Test] Mean MC interval width: {interval_width:.6f}')
+        else:
+            pred_upper = preds_q[:, :, self.q_upper_idx:self.q_upper_idx + 1]
+            pred_lower = preds_q[:, :, self.q_lower_idx:self.q_lower_idx + 1]
+            print('[Test] UQ method: quantile outputs.')
 
         print('test shape:', preds_q.shape, trues.shape)
 
@@ -664,9 +671,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         pd.DataFrame(
             {
                 'true': true_series,
-                'pred_mc_mean': pred_series,
-                'pred_mc_lower': lower_series,
-                'pred_mc_upper': upper_series,
+                'pred_median_q0.50': pred_series,
+                f'pred_lower_q{self.quantiles[self.q_lower_idx]:.2f}': lower_series,
+                f'pred_upper_q{self.quantiles[self.q_upper_idx]:.2f}': upper_series,
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
 
