@@ -16,15 +16,21 @@ def data_provider(args, flag):
         size=[args.seq_len, args.label_len, args.pred_len],
         features=args.features,
         target=args.target,
+        prediction_target=args.prediction_target,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
     )
     print(flag, len(data_set))
-    data_loader = DataLoader(
-        data_set,
+    loader_kwargs = dict(
         batch_size=args.batch_size,
         shuffle=shuffle_flag,
         num_workers=args.num_workers,
         drop_last=drop_last,
+        pin_memory=bool(args.use_gpu),
     )
+    if args.num_workers > 0:
+        loader_kwargs['persistent_workers'] = True
+        loader_kwargs['prefetch_factor'] = 2
+
+    data_loader = DataLoader(data_set, **loader_kwargs)
     return data_set, data_loader

@@ -15,7 +15,7 @@ class Dataset_BatterySOH(Dataset):
 
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='battery.xlsx',
-                 target='soh', scale=False, timeenc=0, freq='h', seasonal_patterns=None,
+                 target='soh', prediction_target='absolute', scale=False, timeenc=0, freq='h', seasonal_patterns=None,
                  train_ratio=0.7, val_ratio=0.1):
         if size is None:
             self.seq_len = 20
@@ -32,6 +32,7 @@ class Dataset_BatterySOH(Dataset):
 
         self.features = features
         self.target = target
+        self.prediction_target = prediction_target
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
@@ -50,6 +51,7 @@ class Dataset_BatterySOH(Dataset):
 
         df_battery = df_raw.iloc[:, [0, 3]].copy()
         df_battery.columns = ['cycle', 'soh']
+        cycles = df_battery[['cycle']].values.astype(np.float32)
         data = df_battery[['soh']].values.astype(np.float32)
 
         num_train = int(len(data) * self.train_ratio)
@@ -63,6 +65,7 @@ class Dataset_BatterySOH(Dataset):
 
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
+        self.cycle_x = cycles[border1:border2]
 
     def __getitem__(self, index):
         s_begin = index
@@ -72,6 +75,9 @@ class Dataset_BatterySOH(Dataset):
 
         seq_x = self.data_x[s_begin:s_end]
         seq_y = self.data_y[r_begin:r_end]
+        if self.prediction_target == 'delta':
+            base = seq_x[-1:, :]
+            seq_y = seq_y - base
         seq_x_mark = np.zeros((self.seq_len, 1), dtype=np.float32)
         seq_y_mark = np.zeros((self.label_len + self.pred_len, 1), dtype=np.float32)
 
