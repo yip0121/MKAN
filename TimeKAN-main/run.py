@@ -139,7 +139,7 @@ def build_parser():
     parser.add_argument(
         '--bayes_refit',
         action='store_true',
-        default=False,
+        default=True,
         help='after Bayesian optimization, refit once with best parameters',
     )
     parser.add_argument(
@@ -322,8 +322,10 @@ def main():
         print(args)
         if not args.bayes_refit:
             print('[BayesOpt] bayes_refit is False; skipping final retraining.')
+            print('[BayesOpt] No final test() run will be executed, so metrics.csv / prediction plots are not generated.')
             print('[BayesOpt] Best trial is selected by validation MSE only; test set is untouched in Bayesian search.')
             print(f"[BayesOpt] Best validation MSE: {best_info.get('best_value', 'N/A')}")
+            print(f"[BayesOpt] Saved summary JSON: {build_bayes_best_path(args)}")
             return
         print('[BayesOpt] bayes_refit is True; final training metrics can differ from best trial metrics due to more epochs/retraining.')
 
