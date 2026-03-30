@@ -110,10 +110,8 @@ def build_parser():
     parser.add_argument('--use_amp', action='store_true', default=False)
     parser.add_argument('--loss_type', type=str, default='mse', choices=['mse', 'pinball'],
                         help='training loss type: mse (default) or pinball quantile loss')
-    parser.add_argument('--uq_method', type=str, default='mc', choices=['mc', 'quantile'],
-                        help='uncertainty quantification method for interval plots')
     parser.add_argument('--mc_samples', type=int, default=30,
-                        help='number of Monte Carlo dropout forward passes for uq_method=mc')
+                        help='number of Monte Carlo dropout forward passes for uncertainty intervals')
     parser.add_argument('--mc_alpha', type=float, default=0.1,
                         help='tail probability for MC interval, e.g. 0.1 -> 90% interval')
 
