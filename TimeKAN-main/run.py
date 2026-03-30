@@ -116,13 +116,38 @@ def build_parser():
                         help='tail probability for MC interval, e.g. 0.1 -> 90% interval')
 
     # bayesian optimization
-    parser.add_argument('--enable_bayes_opt', action='store_true', default=False, help='run Bayesian hyper-parameter optimization before final training')
-    parser.add_argument('--disable_bayes_opt', action='store_false', dest='enable_bayes_opt', help='disable Bayesian hyper-parameter optimization')
+    parser.add_argument(
+        '--enable_bayes_opt',
+        action='store_true',
+        default=False,
+        help='run Bayesian hyper-parameter optimization before final training',
+    )
+    parser.add_argument(
+        '--disable_bayes_opt',
+        action='store_false',
+        dest='enable_bayes_opt',
+        help='disable Bayesian hyper-parameter optimization',
+    )
     parser.add_argument('--bayes_trials', type=int, default=30, help='number of Bayesian optimization trials')
     parser.add_argument('--bayes_train_epochs', type=int, default=30, help='epochs per Bayesian trial')
-    parser.add_argument('--bayes_timeout', type=int, default=0, help='timeout seconds for Bayesian optimization; <=0 means no timeout')
-    parser.add_argument('--bayes_refit', action='store_true', default=False, help='after Bayesian optimization, refit once with best parameters')
-    parser.add_argument('--no_bayes_refit', action='store_false', dest='bayes_refit', help='skip final retraining after Bayesian optimization')
+    parser.add_argument(
+        '--bayes_timeout',
+        type=int,
+        default=0,
+        help='timeout seconds for Bayesian optimization; <=0 means no timeout',
+    )
+    parser.add_argument(
+        '--bayes_refit',
+        action='store_true',
+        default=False,
+        help='after Bayesian optimization, refit once with best parameters',
+    )
+    parser.add_argument(
+        '--no_bayes_refit',
+        action='store_false',
+        dest='bayes_refit',
+        help='skip final retraining after Bayesian optimization',
+    )
 
     # misc kept for compatibility with existing experiment naming
     parser.add_argument('--comment', type=str, default='none')
