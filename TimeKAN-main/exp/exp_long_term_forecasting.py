@@ -657,7 +657,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             q_lower = np.full_like(q_median, np.nan, dtype=np.float32)
             q_upper = np.full_like(q_median, np.nan, dtype=np.float32)
 
-        print('test shape:', preds_q.shape, trues.shape)
+        # Quantile uncertainty (aleatoric): independent branch for plotting and dedicated metrics
+        q_lower_idx = int(np.argmin(np.abs(self.quantiles - 0.05)))
+        q_median_idx = int(np.argmin(np.abs(self.quantiles - 0.5)))
+        q_upper_idx = int(np.argmin(np.abs(self.quantiles - 0.95)))
+        q_lower = preds_q[:, :, q_lower_idx:q_lower_idx + 1]
+        q_median = preds_q[:, :, q_median_idx:q_median_idx + 1]
+        q_upper = preds_q[:, :, q_upper_idx:q_upper_idx + 1]
+        print(f'[Test] Quantile UQ: lower={self.quantiles[q_lower_idx]:.3f}, '
+              f'median={self.quantiles[q_median_idx]:.3f}, upper={self.quantiles[q_upper_idx]:.3f}.')
+
+        # MC dropout uncertainty (epistemic): independent branch and dedicated metrics
+        mc_median, mc_lower, mc_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+        mc_interval_width = float(np.mean(mc_upper - mc_lower))
+        print(f'[Test] MC UQ: samples={self.args.mc_samples}, alpha={self.args.mc_alpha}, '
+              f'mean interval width={mc_interval_width:.6f}.')
 
         # Keep the original metrics.csv behavior tied to plotting branch (Quantile q0.5)
         mae, mse, rmse, mape, mspe = metric(q_median, trues)
