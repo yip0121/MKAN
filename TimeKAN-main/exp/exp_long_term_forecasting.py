@@ -379,8 +379,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         alpha = float(self.args.mc_alpha)
         lower = np.quantile(sample_arr, alpha / 2.0, axis=0)
         upper = np.quantile(sample_arr, 1.0 - alpha / 2.0, axis=0)
-        mean = np.mean(sample_arr, axis=0)
-        return mean, lower, upper, trues_ref
+        median = np.quantile(sample_arr, 0.5, axis=0)
+        return median, lower, upper, trues_ref
+
+    @staticmethod
+    def _interval_metrics(y_true, y_lower, y_upper):
+        y_true = np.asarray(y_true)
+        y_lower = np.asarray(y_lower)
+        y_upper = np.asarray(y_upper)
+        covered = (y_true >= y_lower) & (y_true <= y_upper)
+        picp = float(np.mean(covered))
+        width = y_upper - y_lower
+        mpiw = float(np.mean(width))
+        denom = float(np.max(y_true) - np.min(y_true))
+        pinaw = float(mpiw / max(denom, 1e-12))
+        return picp, pinaw, mpiw
+
+    @staticmethod
+    def _sort_interval_bounds(lower, upper):
+        lower = np.asarray(lower)
+        upper = np.asarray(upper)
+        return np.minimum(lower, upper), np.maximum(lower, upper)
 
     def _run_band_ablation_analysis(self, test_data, test_loader, baseline_rmse, result_folder):
         model_obj = self.model.module if hasattr(self.model, 'module') else self.model
@@ -605,28 +624,58 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('[Test] prediction_target=delta: restored predictions/truth to absolute SOH scale before evaluation.')
         if self.args.eval_last_step_only:
             print('[Test] eval_last_step_only=True: keeping only the final step per forecast window for metrics/plots.')
-        preds = preds_q[:, :, self.q_median_idx:self.q_median_idx + 1]
-        pred_mean, pred_lower, pred_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
-        preds = pred_mean
-        interval_width = float(np.mean(pred_upper - pred_lower))
-        print(f'[Test] UQ method: MC dropout (samples={self.args.mc_samples}, alpha={self.args.mc_alpha}).')
-        print(f'[Test] Mean MC interval width: {interval_width:.6f}')
+
+        # MC dropout uncertainty (epistemic): independent branch and dedicated metrics
+        mc_median, mc_lower, mc_upper, _ = self._mc_interval_from_dropout(test_data, test_loader)
+        mc_cross_count = int(np.sum(mc_lower > mc_upper))
+        if mc_cross_count > 0:
+            print(f'[Test][Warn] MC interval inversion detected at {mc_cross_count} elements; sorting interval bounds.')
+        mc_lower, mc_upper = self._sort_interval_bounds(mc_lower, mc_upper)
+        mc_interval_width = float(np.mean(mc_upper - mc_lower))
+        print(f'[Test] MC UQ: samples={self.args.mc_samples}, alpha={self.args.mc_alpha}, '
+              f'mean interval width={mc_interval_width:.6f}.')
+
+        # Quantile uncertainty (aleatoric): only reliable when loss_type=pinball
+        loss_type = str(getattr(self.args, 'loss_type', 'mse')).lower()
+        quantile_enabled = (loss_type == 'pinball')
+        q_lower_idx = int(np.argmin(np.abs(self.quantiles - 0.05)))
+        q_median_idx = int(np.argmin(np.abs(self.quantiles - 0.5)))
+        q_upper_idx = int(np.argmin(np.abs(self.quantiles - 0.95)))
+        q_median = preds_q[:, :, q_median_idx:q_median_idx + 1]
+        if quantile_enabled:
+            q_lower = preds_q[:, :, q_lower_idx:q_lower_idx + 1]
+            q_upper = preds_q[:, :, q_upper_idx:q_upper_idx + 1]
+            q_cross_count = int(np.sum(q_lower > q_upper))
+            if q_cross_count > 0:
+                print(f'[Test][Warn] Quantile crossing detected at {q_cross_count} elements; sorting interval bounds.')
+            q_lower, q_upper = self._sort_interval_bounds(q_lower, q_upper)
+            print(f'[Test] Quantile UQ: lower={self.quantiles[q_lower_idx]:.3f}, '
+                  f'median={self.quantiles[q_median_idx]:.3f}, upper={self.quantiles[q_upper_idx]:.3f}.')
+        else:
+            print(f"[Test][Warn] loss_type={loss_type}. Quantile interval heads are not trained; "
+                  f"Quantile UQ metrics will be NaN and interval plot will fallback to MC bounds.")
+            q_lower = np.full_like(q_median, np.nan, dtype=np.float32)
+            q_upper = np.full_like(q_median, np.nan, dtype=np.float32)
 
         print('test shape:', preds_q.shape, trues.shape)
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        r2 = R2(preds, trues)
-        print(f'mse:{mse}, mae:{mae}')
-        print(f'rmse:{rmse}, mape:{mape}, mspe:{mspe}, r2:{r2}')
+        # Keep the original metrics.csv behavior tied to plotting branch (Quantile q0.5)
+        mae, mse, rmse, mape, mspe = metric(q_median, trues)
+        r2 = R2(q_median, trues)
+        print(f'[Quantile] mse:{mse}, mae:{mae}')
+        print(f'[Quantile] rmse:{rmse}, mape:{mape}, mspe:{mspe}, r2:{r2}')
+        metrics_payload = {'mae': float(mae), 'mse': float(mse), 'rmse': float(rmse),
+                           'mape': float(mape), 'mspe': float(mspe), 'r2': float(r2)}
 
-        metrics_payload = {
-            'mae': float(mae),
-            'mse': float(mse),
-            'rmse': float(rmse),
-            'mape': float(mape),
-            'mspe': float(mspe),
-            'r2': float(r2),
-        }
+        if quantile_enabled:
+            q_picp, q_pinaw, q_mpiw = self._interval_metrics(trues, q_lower, q_upper)
+        else:
+            q_picp, q_pinaw, q_mpiw = np.nan, np.nan, np.nan
+        mc_picp, mc_pinaw, mc_mpiw = self._interval_metrics(trues, mc_lower, mc_upper)
+        mc_mae, mc_mse, mc_rmse, mc_mape, mc_mspe = metric(mc_median, trues)
+        mc_r2 = R2(mc_median, trues)
+        print(f'[Quantile UQ] PICP={q_picp:.6f}, PINAW={q_pinaw:.6f}, MPIW={q_mpiw:.6f}')
+        print(f'[MC UQ]       PICP={mc_picp:.6f}, PINAW={mc_pinaw:.6f}, MPIW={mc_mpiw:.6f}')
 
         if not save_outputs:
             return metrics_payload
@@ -643,20 +692,37 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         pd.DataFrame([metrics_payload]).to_csv(os.path.join(result_folder, 'metrics.csv'), index=False)
         if getattr(self.args, 'run_band_ablation', False):
             self._run_band_ablation_analysis(test_data, test_loader, baseline_rmse=rmse, result_folder=result_folder)
-        self._save_array_csv(preds, os.path.join(result_folder, 'pred.csv'))
+        self._save_array_csv(q_median, os.path.join(result_folder, 'pred.csv'))
         self._save_array_csv(preds_q, os.path.join(result_folder, 'pred_quantiles.csv'))
         self._save_array_csv(trues, os.path.join(result_folder, 'true.csv'))
+        self._save_array_csv(q_lower, os.path.join(result_folder, 'pred_quantile_lower.csv'))
+        self._save_array_csv(q_median, os.path.join(result_folder, 'pred_quantile_median.csv'))
+        self._save_array_csv(q_upper, os.path.join(result_folder, 'pred_quantile_upper.csv'))
+        self._save_array_csv(mc_lower, os.path.join(result_folder, 'pred_mc_lower.csv'))
+        self._save_array_csv(mc_median, os.path.join(result_folder, 'pred_mc_median.csv'))
+        self._save_array_csv(mc_upper, os.path.join(result_folder, 'pred_mc_upper.csv'))
 
         true_series = trues[:, :, -1].reshape(-1)
-        pred_series = preds[:, :, -1].reshape(-1)
-        lower_series = pred_lower[:, :, -1].reshape(-1)
-        upper_series = pred_upper[:, :, -1].reshape(-1)
+        pred_series = q_median[:, :, -1].reshape(-1)
+        quantile_lower_series = q_lower[:, :, -1].reshape(-1)
+        quantile_upper_series = q_upper[:, :, -1].reshape(-1)
+        mc_lower_series = mc_lower[:, :, -1].reshape(-1)
+        mc_upper_series = mc_upper[:, :, -1].reshape(-1)
+        mc_median_series = mc_median[:, :, -1].reshape(-1)
+        if quantile_enabled:
+            plot_lower_series = quantile_lower_series
+            plot_upper_series = quantile_upper_series
+            print('[Test] Interval plot source: Quantile bounds.')
+        else:
+            plot_lower_series = mc_lower_series
+            plot_upper_series = mc_upper_series
+            print('[Test] Interval plot source: MC bounds (fallback due to non-pinball loss).')
 
         visual_with_interval(
             true_series,
             pred_series,
-            lower_series,
-            upper_series,
+            plot_lower_series,
+            plot_upper_series,
             os.path.join(result_folder, 'prediction_vs_truth_with_interval.png')
         )
         visual(true_series, pred_series, os.path.join(result_folder, 'prediction_vs_truth.png'))
@@ -664,11 +730,51 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         pd.DataFrame(
             {
                 'true': true_series,
-                'pred_mc_mean': pred_series,
-                'pred_mc_lower': lower_series,
-                'pred_mc_upper': upper_series,
+                'pred_quantile_median': pred_series,
+                'pred_quantile_lower': quantile_lower_series,
+                'pred_quantile_upper': quantile_upper_series,
+                'pred_mc_median': mc_median_series,
+                'pred_mc_lower': mc_lower_series,
+                'pred_mc_upper': mc_upper_series,
             }
         ).to_csv(os.path.join(result_folder, 'prediction_vs_truth.csv'), index=False)
+
+        horizon = int(trues.shape[1])
+        uq_summary = pd.DataFrame([
+            {
+                'horizon': horizon,
+                'method': 'Quantile',
+                'lower_quantile': float(self.quantiles[q_lower_idx]),
+                'median_quantile': float(self.quantiles[q_median_idx]),
+                'upper_quantile': float(self.quantiles[q_upper_idx]),
+                'picp': q_picp,
+                'pinaw': q_pinaw,
+                'mpiw': q_mpiw,
+                'mae': float(mae),
+                'mse': float(mse),
+                'rmse': float(rmse),
+                'mape': float(mape),
+                'mspe': float(mspe),
+                'r2': float(r2),
+            },
+            {
+                'horizon': horizon,
+                'method': 'MC Dropout',
+                'lower_quantile': float(self.args.mc_alpha / 2.0),
+                'median_quantile': 0.5,
+                'upper_quantile': float(1.0 - self.args.mc_alpha / 2.0),
+                'picp': mc_picp,
+                'pinaw': mc_pinaw,
+                'mpiw': mc_mpiw,
+                'mae': float(mc_mae),
+                'mse': float(mc_mse),
+                'rmse': float(mc_rmse),
+                'mape': float(mc_mape),
+                'mspe': float(mc_mspe),
+                'r2': float(mc_r2),
+            },
+        ])
+        uq_summary.to_csv(os.path.join(result_folder, 'uq_summary.csv'), index=False)
 
         self._save_input_impact_heatmap(test_data, result_folder)
         self._save_kan_activation_plot(result_folder)
@@ -680,6 +786,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print('Saved interval visualization to:', os.path.join(result_folder, 'prediction_vs_truth_with_interval.png'))
         print('Saved prediction csv to:', os.path.join(result_folder, 'prediction_vs_truth.csv'))
         print('Saved metrics to:', os.path.join(result_folder, 'metrics.csv'))
+        print('Saved UQ summary to:', os.path.join(result_folder, 'uq_summary.csv'))
         print('Saved quantiles to:', os.path.join(result_folder, 'pred_quantiles.csv'))
         print('Saved KAN activation plot to:', os.path.join(result_folder, 'kan_activation_functions.png'))
         if save_dwt_plot:
