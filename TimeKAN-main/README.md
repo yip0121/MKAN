@@ -72,10 +72,14 @@ scripts\Battery\soh_20_1.bat
   - If `pred_len > 1`: non-overlapping multi-step direct mode is enabled automatically (`stride = pred_len`), and each new block uses true history from dataset as input (no prediction feedback).
 
 - Quantile regression mode (Pinball Loss):
+  - Select `--loss_type pinball` to train all quantile heads. The default `--loss_type mse` trains only the median head.
   - Configure quantiles with `--quantiles` (default: `0.95,0.5,0.05`).
   - Model outputs three heads by default: upper (q0.95), median (q0.50), lower (q0.05).
-  - Saved artifacts include `pred_quantiles.csv`, and CSV columns for lower/median/upper bounds (90% interval by default).
+  - `pred_quantile_lower.csv` / `pred_quantile_upper.csv` and the matching `prediction_vs_truth.csv` columns contain sorted bounds for pinball loss (90% interval by default). With MSE loss they contain missing values (`NaN`, serialized as empty CSV fields), as do the Quantile PICP/PINAW/MPIW entries in `uq_summary.csv`.
+  - `pred_quantiles.csv` retains raw model heads in the configured order for diagnostics; non-median heads are untrained under MSE. Use the dedicated interval CSVs for UQ analysis.
+  - MC Dropout is sampled once per `test()` call; its bounds, median and interval metrics are shared by the MC CSVs and `uq_summary.csv`.
   - Interval plot: `prediction_vs_truth_with_interval.png` (median line + shaded confidence interval).
+  - The shaded interval uses sorted quantile bounds for pinball loss and MC bounds for MSE loss. The prediction line, `pred.csv`, and `metrics.csv` use the deterministic median head in both modes.
   - DWT band visualization (single figure): `dwt_bands_overview.png` (saved on final test run by default to reduce training overhead).
   - `pred_len=1`: single-step sliding-window evaluation (stride=1).
   - `pred_len>1`: multi-step direct evaluation (window stride equals `pred_len`), and each next window uses true history from dataset (no prediction feedback).
@@ -123,6 +127,20 @@ Optimization objective is validation-set MSE computed during each trial without 
   - `--train_ratio` (default `0.7`)
   - `--val_ratio` (default `0.1`)
   - test ratio is `1 - train_ratio - val_ratio`
+
+## UQ regression tests
+
+After installing the project dependencies, run from the repository root:
+
+```bash
+python -m unittest discover -s TimeKAN-main/tests -v
+```
+
+The tests use deterministic prediction fixtures without training or loading a dataset.
+They exercise `test()`, real MC quantile aggregation, CSV exports, interval metrics,
+and PNG plotting for MSE and pinball loss with single-step and multi-step arrays.
+They also check one MC sampling pass when output saving is disabled and preservation
+of sorted MC bounds.
 
 ## Acknowledgement
 
